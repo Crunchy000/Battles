@@ -2250,9 +2250,15 @@ function zzLayers(SR,layers){
 // The battle's sound set. Several takes of each are built so repeats never sound identical.
 //           vol  rnd  freq  att  sus  rel  shp curve slide dSl  pJmp pJT  rep  noise mod  crush dly  sVol dec  trem filter
 const ZZ={
-  clang:   ()=>[[[.8, .2, 2300, 0,   0,  .08, 3,  1,   0,   0,   0,   0,   0,   .6,  211, 0,   0,   1,   0,   0,   1200],0,.8],
-                [[.8, .2, 3400, 0,   0,  .06, 4,  1,   0,   0,   0,   0,   0,   .8,  0,   0,   0,   1,   0,   0,   1800],0,1],
-                [[.4, .2,  900, 0,   0,  .05, 4,  1,   0,   0,   0,   0,   0,   .5,  0,   0,   0,   1,   0,   0,  -2500],.004,.6]],
+  // blade on blade: a hard tick, then a short ring of off-pitch partials (two close ones beat for shimmer).
+  // Each take picks its own pitch, and the ring dies in well under a quarter second so it never chimes.
+  clang:   ()=>{ const f=1900+Math.random()*900, q=1.3+Math.random()*.15;
+    return [[[.6, .1, 3200, 0,   0,  .012,4,  1,   0,   0,   0,   0,   0,   .5,  0,   0,   0,   1,   0,   0,   2600],0,.55],
+            [[1,  0,  f,    0,   0,  .15, 0,  1,   0,   0,   0,   0,   0,   0,   0,   0,   0,  .4,  .02, 0,   0],.002,.8],
+            [[1,  0,  f*1.013,0, 0,  .13, 0,  1,   0,   0,   0,   0,   0,   0,   0,   0,   0,  .4,  .02, 0,   0],.002,.45],
+            [[1,  0,  f*q,  0,   0,  .1,  0,  1,   0,   0,   0,   0,   0,   0,   0,   0,   0,  .35, .015,0,   0],.002,.5],
+            [[1,  0,  f*2.07,0,  0,  .06, 0,  1,   0,   0,   0,   0,   0,   0,   0,   0,   0,  .3,  .01, 0,   0],.002,.3],
+            [[1,  0,  f*.52,0,   0,  .05, 1,  1,   0,   0,   0,   0,   0,   0,   0,   0,   0,   1,   0,   0,   0],.002,.25]]; },
   wood:    ()=>[[[1,  .15, 300, 0,   .01, .07, 1,  2,   -.4, 0,   0,   0,   0,   0,   0,   0,   0,   1,   0,   0,   0],0,1],
                 [[.7, .2, 1200, 0,   0,  .05, 4,  1,   0,   0,   0,   0,   0,   .3,  0,   0,   0,   1,   0,   0,  -2600],0,.6]],
   thud:    ()=>[[[1,  .2,  120, 0,  .02, .2,  0,  1,  -.3,  0,   0,   0,   0,   0,   0,   0,   0,   1,   0,   0,   0],0,1],
