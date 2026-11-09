@@ -3,7 +3,7 @@
 // One-shots are placed by distance and screen side relative to the camera and rate-limited per kind,
 // so the loudest nearby events play first; continuous loops (melee din, hooves, marching, wind) follow
 // how much is happening near the camera.
-const AUD={ctx:null,on:true,vol:0.8,amb:0.7,ready:false,building:false,voices:0,MAXV:56,
+const AUD={ctx:null,on:true,vol:0.8,amb:0.7,ready:false,building:false,voices:0,MAXV:32,
   B:{}, bus:{}, beds:{}, tok:new Float32Array(EV_N), cand:[], din:0, hoof:0, march:0, sampleT:0,
   volley:0, volleyPan:0, volleyW:0, volleyT:0, lastPlace:0, L:[0,0,0]};
 const AUD_KEY='massive-armies-audio';
@@ -200,8 +200,8 @@ function sfxTasks(){
   ];
 }
 // a short run of effects to hear the current set
-function audPreview(){ if(!audLive()) return; const B=AUD.B, seq=[['clang',.5,0],['clang',.45,.2],['wood',.55,.38],['punch',.55,.6],['struck',.4,.85],['xbow',.45,1.05],['latch',.35,1.05],['musket',.55,1.35],['creak',.35,1.7],['woodH',.6,2.05],['impact',.7,2.5],['rock',.5,2.5],['cannon',.75,3.1],['coin',.4,4]];
-  for(const [k,g,d] of seq) audPlay(B[k],g,(AR()-.5)*.6,1,0,.15,d); audPlay(B.whoosh,.4,0,1,0,.2,1.2); }
+function audPreview(){ if(!audLive()) return; const B=AUD.B, seq=[['clang',.5,0],['clang',.45,.35],['wood',.55,.7],['punch',.55,1.05],['struck',.4,1.4],['xbow',.45,1.75],['musket',.55,2.1],['woodH',.6,2.5],['thud',.7,2.9],['cannon',.75,3.4],['coin',.4,4.4]];
+  for(const [k,g,d] of seq) audPlay(B[k],g,(AR()-.5)*.6,1,0,.15,d); }
 // recorded effects from Kenney's CC0 sound packs (kenney.nl), embedded as MP3 and decoded once
 function audLoadSamples(){ if(typeof SFX_DATA==='undefined') return; const c=AUD.ctx;
   for(const [k,list] of Object.entries(SFX_DATA.files)){ const out=[]; let left=list.length;
@@ -238,25 +238,19 @@ const audMusic=(name,g,delay)=>audPlay(AUD.B[name],g,0,1,0,0.25,delay||0,AUD.bus
 
 /* ---------- per-kind tuning: [rate/s, burst, base gain, buffer, pitch spread] ---------- */
 const EVK=[];
-EVK[EV_HIT]=[16,4,0.42]; EVK[EV_KILL]=[7,2,0.5,'thud',0.25]; EVK[EV_BLOCK]=[8,3,0.32]; EVK[EV_CHARGE]=[6,3,0.85]; EVK[EV_BRACE]=[4,2,0.8];
-EVK[EV_FIRE+0]=[0,0,0]; EVK[EV_FIRE+1]=[6,3,0.38,'xbow',0.15]; EVK[EV_FIRE+2]=[24,8,0.62,'musket',0.18]; EVK[EV_FIRE+3]=[3,2,0.7,'launch',0.15];
-EVK[EV_FIRE+4]=[4,2,0.6,'ballista',0.1]; EVK[EV_FIRE+5]=[4,2,1.0,'cannon',0.12]; EVK[EV_FIRE+6]=[4,2,0.55,'cannon',0.1];
-EVK[EV_IMPACT]=[4,2,0.8,'impact',0.15]; EVK[EV_BOOM]=[4,2,0.95,'blast',0.12]; EVK[EV_BOUNCE]=[5,2,0.5,'thud',0.2]; EVK[EV_STRUCK]=[10,3,0.34,'struck',0.25];
+EVK[EV_HIT]=[7,2,0.42]; EVK[EV_KILL]=[3,1,0.5]; EVK[EV_BLOCK]=[3,1,0.32]; EVK[EV_CHARGE]=[3,2,0.85]; EVK[EV_BRACE]=[2,1,0.8];
+EVK[EV_FIRE+0]=[0,0,0]; EVK[EV_FIRE+1]=[3,2,0.38,'xbow']; EVK[EV_FIRE+2]=[8,3,0.62,'musket']; EVK[EV_FIRE+3]=[2,1,0.7,'launch'];
+EVK[EV_FIRE+4]=[2,1,0.6,'ballista']; EVK[EV_FIRE+5]=[3,2,1.0,'cannon']; EVK[EV_FIRE+6]=[3,2,0.55,'cannon'];
+EVK[EV_IMPACT]=[3,1,0.8,'impact']; EVK[EV_BOOM]=[3,1,0.95,'blast']; EVK[EV_BOUNCE]=[2,1,0.5,'thud']; EVK[EV_STRUCK]=[4,2,0.34,'struck'];
 const AUD_R=30;
 function audW(x,y,z){ const L=AUD.L, dx=x-L[0], dy=y-L[1], dz=z-L[2], d2=dx*dx+dy*dy+dz*dz; return 1/(1+d2/(AUD_R*AUD_R)); }
 function audPan(x,z){ const L=AUD.L, dx=x-L[0], dz=z-L[2], d=Math.sqrt(dx*dx+dz*dz)+6; return clamp((dx*CAM.right[0]+dz*CAM.right[2])/d,-1,1)*0.85; }
+// one sound per event, at its natural pitch
 function audVoice(t,w,pan,delay){
   const k=EVK[t], g=k[2]*Math.pow(w,0.8), lp=1100+15000*Math.pow(w,1.4), wet=0.08+0.45*(1-w), B=AUD.B;
-  if(t===EV_HIT){ const metal=AR()<0.72; audPlay(metal?B.clang:B.wood,g*(metal?1:1.3),pan,0.9+AR()*0.2,lp,wet,delay); if(AR()<0.3) audPlay(B.struck||B.thud,g*0.5,pan,0.9+AR()*0.2,lp,wet,delay); return; }
-  if(t===EV_KILL){ audPlay(B.punch||B.thud,g,pan,0.85+AR()*0.3,lp,wet,delay); if(AR()<0.35) audPlay(B.thud,g*0.6,pan,0.9+AR()*0.2,lp,wet,delay+0.03); return; }
-  if(t===EV_FIRE+1){ audPlay(B.xbow,g,pan,0.92+AR()*0.16,lp,wet,delay); if(B.latch) audPlay(B.latch,g*0.5,pan,0.95+AR()*0.1,lp,wet,delay); return; }
-  if(t===EV_FIRE+3&&B.creak){ audPlay(B.creak,g*0.6,pan,0.9+AR()*0.2,lp,wet,delay); audPlay(B.woodH,g,pan,0.85+AR()*0.2,lp,wet,delay+0.3); return; }
-  if(t===EV_FIRE+4){ audPlay(B.ballista,g,pan,0.95+AR()*0.1,lp,wet,delay); if(B.woodH) audPlay(B.woodH,g*0.6,pan,1.1+AR()*0.2,lp,wet,delay); return; }
-  if(t===EV_IMPACT){ audPlay(B.impact,g,pan,0.9+AR()*0.2,lp,wet,delay); if(B.rock) audPlay(B.rock,g*0.7,pan,0.8+AR()*0.3,lp,wet,delay+0.02); return; }
-  if(t===EV_BLOCK){ audPlay(AR()<0.6?B.wood:B.clang,g,pan,0.9+AR()*0.3,lp,wet,delay); return; }
-  if(t===EV_CHARGE){ audPlay(B.thud,g,pan,0.6+AR()*0.2,lp,wet,delay); audPlay(B.clang,g*0.45,pan,0.55+AR()*0.2,lp,wet,delay+0.01); return; }
-  if(t===EV_BRACE){ audPlay(B.clang,g*0.8,pan,0.6+AR()*0.15,lp,wet,delay); audPlay(B.thud,g,pan,0.55,lp,wet,delay); return; }
-  const spread=k[4]||0; audPlay(B[k[3]],g,pan,1-spread/2+AR()*spread,lp,wet,delay);
+  const buf= t===EV_HIT||t===EV_BRACE ? B.clang : t===EV_BLOCK ? B.wood : t===EV_KILL ? (B.punch||B.thud) : t===EV_CHARGE||t===EV_IMPACT ? B.thud :
+    t===EV_FIRE+3 ? (B.woodH||B.launch) : B[k[3]];
+  audPlay(buf,g,pan,1,lp,wet,delay);
 }
 function audioFrame(dt,phase,speed){
   const n=evN; evN=0; evSeen=0;
@@ -274,8 +268,8 @@ function audioFrame(dt,phase,speed){
     if(t===EV_FIRE){ AUD.volley+=w; AUD.volleyW+=w*w; AUD.volleyPan+=w*audPan(EVX[i],EVZ[i]); continue; }
     if(w<0.015) continue;
     const cl=cand[t];
-    if(cl.length<3){ cl.push(i); cl.sort((a,b)=>audW(EVX[b],EVY[b],EVZ[b])-audW(EVX[a],EVY[a],EVZ[a])); }
-    else if(w>audW(EVX[cl[2]],EVY[cl[2]],EVZ[cl[2]])){ cl[2]=i; cl.sort((a,b)=>audW(EVX[b],EVY[b],EVZ[b])-audW(EVX[a],EVY[a],EVZ[a])); }
+    if(cl.length<2){ cl.push(i); cl.sort((a,b)=>audW(EVX[b],EVY[b],EVZ[b])-audW(EVX[a],EVY[a],EVZ[a])); }
+    else if(w>audW(EVX[cl[1]],EVY[cl[1]],EVZ[cl[1]])){ cl[1]=i; cl.sort((a,b)=>audW(EVX[b],EVY[b],EVZ[b])-audW(EVX[a],EVY[a],EVZ[a])); }
   }
   for(let t=0;t<EV_N;t++){ const cl=cand[t];
     for(let j=0;j<cl.length&&AUD.tok[t]>=1;j++){ const i=cl[j]; AUD.tok[t]-=1; const w=audW(EVX[i],EVY[i],EVZ[i]);
@@ -283,8 +277,8 @@ function audioFrame(dt,phase,speed){
   // arrow volleys: many bows loosing together become one swelling whoosh
   AUD.volleyT-=dt;
   if(AUD.volley>0.04 && AUD.volleyT<=0){ const v=AUD.volley, w=AUD.volleyW/v;
-    audPlay(AUD.B.whoosh,clamp(0.12+0.3*Math.sqrt(v),0,0.75),AUD.volleyPan/v,0.85+AR()*0.3,1500+14000*Math.pow(w,1.2),0.1+0.4*(1-w));
-    AUD.volley=0; AUD.volleyW=0; AUD.volleyPan=0; AUD.volleyT=0.22; }
+    audPlay(AUD.B.whoosh,clamp(0.12+0.3*Math.sqrt(v),0,0.75),AUD.volleyPan/v,1,1500+14000*Math.pow(w,1.2),0.1+0.4*(1-w));
+    AUD.volley=0; AUD.volleyW=0; AUD.volleyPan=0; AUD.volleyT=0.6; }
   else if(AUD.volleyT<=-1){ AUD.volley*=0.5; AUD.volleyW*=0.5; AUD.volleyPan*=0.5; }
   // continuous beds
   const active=phase==='battle'||phase==='result';
@@ -298,7 +292,7 @@ function audioFrame(dt,phase,speed){
   const set=(bed,g,f)=>{ const b=AUD.beds[bed]; if(!b) return; b.g.gain.setTargetAtTime(g,now,0.3); if(f) b.f.frequency.setTargetAtTime(f,now,0.3); };
   const on=active&&speed>0;
   const dinL=on?1-Math.exp(-AUD.din/18):0;
-  set('din',dinL*0.6,700+9000*Math.min(1,dinW*1.6+0.08));
+  set('din',dinL*0.45,700+9000*Math.min(1,dinW*1.6+0.08));
   set('hoof',on?AUD.hoof*0.55:0,500+5000*AUD.hoof);
   set('march',on?AUD.march*0.4:0,1500+6000*AUD.march);
   const zoomOut=clamp((CAM.dist-30)/280,0,1);
@@ -308,5 +302,5 @@ function audioFrame(dt,phase,speed){
 function audBattleStart(){ if(!audLive()) return; audMusic('drum',0.7,0); audMusic('drum',0.6,0.38); audMusic('drum',0.8,0.76); audMusic('hornAdvance',0.4,0.15); }
 function audWave(){ if(!audLive()) return; audMusic('hornWave',0.38,0); audMusic('drum',0.6,0); }
 function audEnd(win){ if(!audLive()) return; if(win) audMusic('fanfare',0.7,0.1); else { audMusic('hornDefeat',0.42,0.1); audMusic('drum',0.6,0.1); audMusic('drum',0.5,1.0); } }
-function audPlace(erase){ const t=performance.now(); if(t-AUD.lastPlace<45) return; AUD.lastPlace=t; audUi('place',erase?0.35:0.5,erase?0.6+AR()*0.1:0.9+AR()*0.3); }
+function audPlace(erase){ const t=performance.now(); if(t-AUD.lastPlace<45) return; AUD.lastPlace=t; audUi('place',erase?0.35:0.5); }
 audLoadPrefs();

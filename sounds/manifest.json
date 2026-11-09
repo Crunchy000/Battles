@@ -2,104 +2,44 @@
  "clang": [
   [
    "clang_0.mp3",
-   "impactPlate_light_000.ogg"
-  ],
-  [
-   "clang_1.mp3",
-   "impactPlate_light_001.ogg"
-  ],
-  [
-   "clang_2.mp3",
-   "impactPlate_light_002.ogg"
-  ],
-  [
-   "clang_3.mp3",
-   "impactPlate_light_003.ogg"
-  ],
-  [
-   "clang_4.mp3",
-   "impactPlate_light_004.ogg"
-  ],
-  [
-   "clang_5.mp3",
-   "impactPlate_medium_000.ogg"
-  ],
-  [
-   "clang_6.mp3",
-   "impactPlate_medium_001.ogg"
-  ],
-  [
-   "clang_7.mp3",
-   "impactPlate_medium_002.ogg"
-  ],
-  [
-   "clang_8.mp3",
-   "impactPlate_medium_003.ogg"
-  ],
-  [
-   "clang_9.mp3",
-   "impactPlate_medium_004.ogg"
-  ],
-  [
-   "clang_10.mp3",
    "impactMetal_light_000.ogg"
   ],
   [
-   "clang_11.mp3",
+   "clang_1.mp3",
    "impactMetal_light_001.ogg"
   ],
   [
-   "clang_12.mp3",
+   "clang_2.mp3",
    "impactMetal_light_002.ogg"
   ],
   [
-   "clang_13.mp3",
+   "clang_3.mp3",
    "impactMetal_light_003.ogg"
   ],
   [
-   "clang_14.mp3",
+   "clang_4.mp3",
    "impactMetal_light_004.ogg"
   ]
  ],
  "wood": [
   [
    "wood_0.mp3",
-   "impactWood_light_000.ogg"
-  ],
-  [
-   "wood_1.mp3",
-   "impactWood_light_001.ogg"
-  ],
-  [
-   "wood_2.mp3",
-   "impactWood_light_002.ogg"
-  ],
-  [
-   "wood_3.mp3",
-   "impactWood_light_003.ogg"
-  ],
-  [
-   "wood_4.mp3",
-   "impactWood_light_004.ogg"
-  ],
-  [
-   "wood_5.mp3",
    "impactWood_medium_000.ogg"
   ],
   [
-   "wood_6.mp3",
+   "wood_1.mp3",
    "impactWood_medium_001.ogg"
   ],
   [
-   "wood_7.mp3",
+   "wood_2.mp3",
    "impactWood_medium_002.ogg"
   ],
   [
-   "wood_8.mp3",
+   "wood_3.mp3",
    "impactWood_medium_003.ogg"
   ],
   [
-   "wood_9.mp3",
+   "wood_4.mp3",
    "impactWood_medium_004.ogg"
   ]
  ],
@@ -167,26 +107,6 @@
   [
    "struck_4.mp3",
    "impactPunch_medium_004.ogg"
-  ],
-  [
-   "struck_5.mp3",
-   "impactSoft_medium_000.ogg"
-  ],
-  [
-   "struck_6.mp3",
-   "impactSoft_medium_001.ogg"
-  ],
-  [
-   "struck_7.mp3",
-   "impactSoft_medium_002.ogg"
-  ],
-  [
-   "struck_8.mp3",
-   "impactSoft_medium_003.ogg"
-  ],
-  [
-   "struck_9.mp3",
-   "impactSoft_medium_004.ogg"
   ]
  ],
  "woodH": [
@@ -201,94 +121,24 @@
   [
    "woodH_2.mp3",
    "impactWood_heavy_002.ogg"
-  ],
-  [
-   "woodH_3.mp3",
-   "impactWood_heavy_003.ogg"
-  ],
-  [
-   "woodH_4.mp3",
-   "impactWood_heavy_004.ogg"
-  ]
- ],
- "creak": [
-  [
-   "creak_0.mp3",
-   "creak1.ogg"
-  ],
-  [
-   "creak_1.mp3",
-   "creak2.ogg"
-  ],
-  [
-   "creak_2.mp3",
-   "creak3.ogg"
-  ]
- ],
- "latch": [
-  [
-   "latch_0.mp3",
-   "metalLatch.ogg"
-  ],
-  [
-   "latch_1.mp3",
-   "metalClick.ogg"
-  ]
- ],
- "rock": [
-  [
-   "rock_0.mp3",
-   "impactMining_000.ogg"
-  ],
-  [
-   "rock_1.mp3",
-   "impactMining_001.ogg"
-  ],
-  [
-   "rock_2.mp3",
-   "impactMining_002.ogg"
-  ],
-  [
-   "rock_3.mp3",
-   "impactMining_003.ogg"
-  ],
-  [
-   "rock_4.mp3",
-   "impactMining_004.ogg"
   ]
  ],
  "coin": [
   [
    "coin_0.mp3",
-   "handleCoins.ogg"
-  ],
-  [
-   "coin_1.mp3",
    "handleCoins2.ogg"
   ]
  ],
  "tick": [
   [
    "tick_0.mp3",
-   "click_002.ogg"
-  ],
-  [
-   "tick_1.mp3",
    "click_003.ogg"
-  ],
-  [
-   "tick_2.mp3",
-   "click_005.ogg"
   ]
  ],
  "place": [
   [
    "place_0.mp3",
    "drop_002.ogg"
-  ],
-  [
-   "place_1.mp3",
-   "drop_004.ogg"
   ]
  ]
 }
