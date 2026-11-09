@@ -49,10 +49,10 @@ const UNITS=[
  {id:'lcav',  name:'Light Cavalry',cls:'cav',hp:120,armor:2,dmg:14,aps:1.0,speed:7.5,range:1.2,morale:55, cost:25, r:.62,sp:2.0,mass:3,  scale:1,   foot:.95, charge:1.6, knock:.9, sense:16, role:'Flankers', desc:'Fast riders that swing wide and hunt archers and siege crews.'},
  {id:'hcav',  name:'Heavy Cavalry',cls:'cav',hp:240,armor:8,dmg:22,aps:0.8,speed:6.0,range:1.3,morale:75, cost:50, r:.70,sp:2.2,mass:4.5,scale:1.12,foot:1.05,charge:3, knock:1.8, sense:16, role:'Breakthrough', desc:'Crushing charges that knock infantry out of formation.'},
  {id:'lancer',name:'Lancers',   cls:'cav', hp:170,armor:5, dmg:16,aps:0.8, speed:6.8,range:2.2,morale:65, cost:45, r:.66,sp:2.1,mass:3.6,scale:1,   foot:1,   charge:5, knock:2.2, sense:16, role:'Charge specialists', desc:'The lance hit deals 5× damage on impact.'},
- {id:'cata',  name:'Catapults', cls:'sie', hp:220,armor:2, dmg:70,aps:0.11,speed:1.4,range:80, morale:40, cost:120,r:1.2,sp:4.5,mass:12, scale:1,   foot:1.7, proj:3, acc:.05, aoe:3.5, minR:20, role:'Area siege', desc:'Hurl boulders that smash packed formations.'},
- {id:'ballista',name:'Ballistae',cls:'sie',hp:180,armor:2, dmg:80,aps:0.25,speed:1.5,range:72, morale:40, cost:110,r:1.0,sp:4,  mass:10, scale:1,   foot:1.5, proj:4, acc:.015, pierce:5, minR:8, role:'Precision', desc:'Bolts that skewer up to five soldiers in a file.'},
- {id:'cannon',name:'Cannons',   cls:'sie', hp:240,armor:4, dmg:95,aps:0.15,speed:1.3,range:88, morale:40, cost:180,r:1.1,sp:4.5,mass:12, scale:1,   foot:1.6, proj:5, acc:.03, pierce:8, minR:10, role:'Bouncing shot', desc:'Round shot bounces through ranks, hitting everyone in its path.'},
- {id:'mortar',name:'Mortars',   cls:'sie', hp:190,armor:3, dmg:75,aps:0.12,speed:1.2,range:68, morale:40, cost:160,r:1.0,sp:4,  mass:10, scale:1,   foot:1.5, proj:6, acc:.06, aoe:4.5, minR:15, role:'High angle', desc:'Explosive shells dropped from above. Walls give no cover.'},
+ {id:'cata',  name:'Catapults', cls:'sie', hp:220,armor:2, dmg:70,aps:0.11,speed:2.7,range:80, morale:40, cost:120,r:1.2,sp:4.5,mass:12, scale:1,   foot:1.7, proj:3, acc:.05, aoe:3.5, minR:20, role:'Area siege', desc:'Hurl boulders that smash packed formations.'},
+ {id:'ballista',name:'Ballistae',cls:'sie',hp:180,armor:2, dmg:80,aps:0.25,speed:2.9,range:72, morale:40, cost:110,r:1.0,sp:4,  mass:10, scale:1,   foot:1.5, proj:4, acc:.015, pierce:5, minR:8, role:'Precision', desc:'Bolts that skewer up to five soldiers in a file.'},
+ {id:'cannon',name:'Cannons',   cls:'sie', hp:240,armor:4, dmg:95,aps:0.15,speed:2.7,range:88, morale:40, cost:180,r:1.1,sp:4.5,mass:12, scale:1,   foot:1.6, proj:5, acc:.03, pierce:8, minR:10, role:'Bouncing shot', desc:'Round shot bounces through ranks, hitting everyone in its path.'},
+ {id:'mortar',name:'Mortars',   cls:'sie', hp:190,armor:3, dmg:75,aps:0.12,speed:2.6,range:68, morale:40, cost:160,r:1.0,sp:4,  mass:10, scale:1,   foot:1.5, proj:6, acc:.06, aoe:4.5, minR:15, role:'High angle', desc:'Explosive shells dropped from above. Walls give no cover.'},
  {id:'cmdr',  name:'Commanders',cls:'sup', hp:320,armor:8, dmg:24,aps:0.8, speed:3.4,range:1.1,morale:100,cost:150,r:.50,sp:2.5,mass:2,  scale:1.2, foot:.7,  aura:12, noFlee:1, role:'Leadership', desc:'Nearby troops deal 25% more damage and recover morale. Routed soldiers can only rally beside a commander.'},
  {id:'medic', name:'Medics',    cls:'sup', hp:70, armor:1, dmg:4, aps:0.5, speed:3.2,range:0.9,morale:50, cost:40, r:.40,sp:1.6,mass:.9, scale:1,   foot:.5,  heal:7, role:'Healing', desc:'Heal the most wounded soldier nearby and keep clear of melee.'},
  {id:'eng',   name:'Engineers', cls:'sup', hp:90, armor:2, dmg:8, aps:0.8, speed:3.0,range:0.9,morale:50, cost:40, r:.42,sp:1.6,mass:1,  scale:1,   foot:.55, stakes:1, role:'Fieldworks', desc:'Plant sharpened stakes ahead of them that maul enemy cavalry.'},
@@ -352,7 +352,7 @@ function layoutArmy(team, counts, T, opt={}){
   rb.forEach(b=>{ const w=b.cols*b.sp, d=b.ranks*b.sp; rngDepth=Math.max(rngDepth,d); mk(b.t, rngFront-dir*d/2, zz+w/2, fmRect(b.cols,b.ranks,b.sp,b.n)); zz+=w+2; });
   // ---- siege ----
   const sieTypes=UNITS.map((u,i)=>i).filter(i=>UNITS[i].cls==='sie' && counts[i]>0);
-  let sieX=rngFront-dir*(rngDepth+8);
+  let sieX=rngFront-dir*(rngDepth+4);
   const minX=Math.min(zoneX[0],zoneX[1])+4, maxX=Math.max(zoneX[0],zoneX[1])-4;
   let sn=0; sieTypes.forEach(t=>sn+=counts[t]);
   if(sn){ let ranks=Math.max(1,Math.ceil(sn*4.6/(Wmax))); let sb=[]; for(const t of sieTypes){ let n=counts[t]; while(n>0){ const take=Math.min(n,8*ranks); sb.push({t,n:take,cols:Math.ceil(take/ranks),ranks}); n-=take; } }
