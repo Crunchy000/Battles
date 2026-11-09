@@ -8,11 +8,11 @@ cd "$(dirname "$0")"
 # embed the sound samples (sounds/*.mp3) as base64 so the game stays one file
 python3 - <<'PY'
 import json, base64, os
-m=json.load(open('sounds/manifest.json')); g=json.load(open('sounds/gains.json'))
-files={k:[base64.b64encode(open('sounds/'+f,'rb').read()).decode() for f,_ in v] for k,v in m.items()}
+man=json.load(open('sounds/manifest.json')); m=man['files']; g=json.load(open('sounds/gains.json'))
+files={k:[base64.b64encode(open('sounds/'+f,'rb').read()).decode() for f,_,_ in v] for k,v in m.items()}
 os.makedirs('dist',exist_ok=True)
-names={k:[o for _,o in v] for k,v in m.items()}
-open('dist/sfx-data.js','w').write('const SFX_DATA='+json.dumps({'gain':g,'names':names,'files':files},separators=(',',':'))+';\n')
+src={k:[[l,c] for _,l,c in v] for k,v in m.items()}
+open('dist/sfx-data.js','w').write('const SFX_DATA='+json.dumps({'gain':g,'credits':man['credits'],'src':src,'files':files},separators=(',',':'))+';\n')
 PY
 JS="src/data.js src/sim.js src/render.js dist/sfx-data.js src/audio.js src/game.js"
 mkdir -p dist test

@@ -1081,18 +1081,22 @@ function renderSoundBtn(){ const b=$('#btnSound'); b.innerHTML=AUD.on?SND_ON:SND
 /* ---------- sound board: every sound in the game, what plays it and where it comes from ---------- */
 const SOUND_BOARD=[
   ['Melee',[['clang','Sword clash','Melee blows landing'],['wood','Shield block','A blow stopped by a shield'],['punch','Soldier falls','Every kill'],['thud','Heavy thud','Cavalry charges, boulders landing and bouncing']]],
-  ['Missiles and siege',[['whoosh','Arrow volley','Archers loosing together near the camera'],['struck','Missile hit','Arrows, bolts and shot striking a soldier'],['xbow','Crossbow','Each crossbow shot'],['musket','Musket','Each musket shot'],['woodH','Catapult','A catapult arm slamming forward'],['ballista','Ballista','Each ballista bolt'],['cannon','Cannon and mortar','Each gun firing'],['blast','Exploding shell','Mortar shells bursting']]],
-  ['Battle cues',[['drum','War drum','The start of a battle and each wave'],['hornAdvance','Advance horn','A battle starting'],['hornWave','Wave horn','A new wave in Endless'],['hornDefeat','Defeat horn','Losing a battle'],['fanfare','Victory fanfare','Winning a battle']]],
+  ['Missiles and siege',[['whoosh','Arrow volley','Archers loosing together near the camera'],['struck','Missile hit','Arrows, bolts and shot striking a soldier'],['xbow','Crossbow','Each crossbow shot'],['musket','Musket','Each musket shot'],['woodH','Catapult and ballista','A siege engine loosing'],['cannon','Cannon and mortar','Each gun firing'],['blast','Exploding shell','Mortar shells bursting']]],
+  ['Battle cues',[['drum','Battle drum','A battle starting'],['hornWave','New wave','A new wave in Endless'],['fanfare','Victory','Winning a battle'],['hornDefeat','Defeat','Losing a battle']]],
   ['Interface',[['coin','Coins','Recruiting, research and gold rewards'],['tick','Click','Buttons'],['place','Place','Dropping a regiment in deployment']]],
-  ['Ambience (loops)',[['loopDin','Melee roar','Rises with the fighting near the camera'],['loopHoof','Hooves','Cavalry on the move'],['loopMarch','Marching','Infantry on the move'],['loopWind','Wind','Always there, louder zoomed out']]],
+  ['Ambience (loops)',[['bed:din','Melee roar','Rises with the fighting near the camera'],['bed:march','Marching','Troops and horse on the move'],['bed:wind','Wind','Always there, louder zoomed out']]],
 ];
 const SB_PLAYING=new Set();
-const sbList=k=>{ const b=AUD.B[k]; return !b?null:Array.isArray(b)?b:[b]; };
-function sbSource(k){ const n=typeof SFX_DATA!=='undefined'&&SFX_DATA.names[k]; if(!n) return 'Synthesised in the browser';
-  const base=n.map(f=>f.replace(/\.ogg$/,'')), stem=base[0].replace(/_?\d+$/,''), same=base.every(b=>b.replace(/_?\d+$/,'')===stem);
-  return 'Kenney (CC0): '+(same&&base.length>1?`${stem} ×${base.length}`:base.join(', ')); }
+const sbList=k=>{ if(k.startsWith('bed:')){ const b=AUD.beds[k.slice(4)]; return b?[b.buf]:null; } return AUD.B[k]||null; };
+function sbSource(k){
+  if(k==='bed:din') return 'Mixed in the game from the sword, shield and blow recordings';
+  if(k==='bed:march') return 'Mixed in the game from the footstep recordings: '+sbSource('step');
+  if(k==='bed:wind') k='wind';
+  const s=typeof SFX_DATA!=='undefined'&&SFX_DATA.src[k]; if(!s) return '';
+  const labels=s.map(x=>x[0]), stem=labels[0].replace(/_?(OS_)?\d+$|\s\d+$/,''), same=labels.every(l=>l.replace(/_?(OS_)?\d+$|\s\d+$/,'')===stem);
+  return (same&&labels.length>1?`${stem} ×${labels.length}`:labels.join(', '))+' · '+[...new Set(s.map(x=>SFX_DATA.credits[x[1]]))].join(', '); }
 function sbPlay(k,i){ audUnlock(); if(!audLive()){ toast('Sounds are still loading. Try again in a moment.'); return; }
-  const list=sbList(k); if(!list) return; const loop=k.startsWith('loop'), src=audPlay(i>=0?[list[i]]:list,loop?0.6:0.7,0,1,0,loop?0:0.1,0,loop?AUD.bus.amb:AUD.bus.sfx);
+  const list=sbList(k); if(!list) return; const loop=k.startsWith('bed:'), src=audPlay(i>=0?[list[i]]:list,loop?0.6:0.7,0,1,0,loop?0:0.1,0,loop?AUD.bus.amb:AUD.bus.sfx);
   if(src){ SB_PLAYING.add(src); src.addEventListener('ended',()=>SB_PLAYING.delete(src)); } }
 function showSoundBoard(){
   audUnlock();
@@ -1100,8 +1104,13 @@ function showSoundBoard(){
     return `<div class="sb-row"><button class="btn sm sb-play" data-k="${k}" data-i="-1" aria-label="Play ${name}">▶</button><div style="min-width:0"><div class="t">${name}</div><div class="m">${when} · <span class="src">${esc(sbSource(k))}</span></div></div>
     <div class="sb-v">${n>1?Array.from({length:n},(_,i)=>`<button class="btn sm" data-k="${k}" data-i="${i}" aria-label="${name}, variant ${i+1}">${i+1}</button>`).join(''):''}</div></div>`; }).join('')}</div>`).join('');
   openModal(`<div class="sheet-h"><h2>Sound board</h2><button class="x" id="sbX" aria-label="Close">×</button></div>
-    <p class="lede">Every sound in the game. ▶ plays a random take, the numbers play each variant. In battle each sound plays at its natural pitch, quieter and more muffled with distance from the camera.</p>
-    <div class="actions" style="justify-content:flex-start;margin:0 0 6px"><button class="btn sm" id="sbStop">Stop all</button></div>${rows}`,s=>{
+    <p class="lede">Every sound in the game. ▶ plays a random take, the numbers play each variant. Every sound is a recording; in battle each plays at its natural pitch, quieter and more muffled with distance from the camera.</p>
+    <div class="actions" style="justify-content:flex-start;margin:0 0 6px"><button class="btn sm" id="sbStop">Stop all</button></div>${rows}
+    <h3 class="sb-h">Credits</h3><div class="hint" style="line-height:1.55">All sounds are recordings, trimmed, made mono and converted to MP3 for the game.<br>
+    Kenney: Impact Sounds, Interface Sounds, RPG Audio and Sci-Fi Sounds, www.kenney.nl (CC0).<br>
+    Still North Media: Medieval Weapons and Firearm Sound Effects Libraries (CC0).<br>
+    Ogrebane: Battle Sound Effects, opengameart.org (CC0).<br>
+    "Oculus Audio Pack 01" by Oculus VR, LLC (developers.meta.com/vr/downloads/package/oculus-audio-pack-1), licensed under CC BY 4.0 (creativecommons.org/licenses/by/4.0). Used: whooshes, marching snare, snare crash, orchestral victory and defeat stingers, footsteps and wind; cut and re-encoded.</div>`,s=>{
     $('#sbX').onclick=closeModal;
     $('#sbStop').onclick=()=>{ for(const src of SB_PLAYING){ try{ src.stop(); }catch(e){} } SB_PLAYING.clear(); };
     s.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>sbPlay(b.dataset.k,+b.dataset.i)); });
@@ -1113,7 +1122,7 @@ function renderSoundPop(){
   <label class="slider"><span>Volume</span><input type="range" id="sdVol" min="0" max="100" step="1" value="${Math.round(AUD.vol*100)}"><output>${Math.round(AUD.vol*100)}%</output></label>
   <label class="slider"><span>Ambience</span><input type="range" id="sdAmb" min="0" max="100" step="1" value="${Math.round(AUD.amb*100)}"><output>${Math.round(AUD.amb*100)}%</output></label>
   <div class="row"><button class="btn sm" id="sdBoard">Sound board</button><button class="btn sm" id="sdTest">Quick test</button></div>
-  <div class="hint">Impact and interface sounds from Kenney's free CC0 packs (kenney.nl). Ambience is the roar of the melee, hooves, marching feet and wind. Press M to mute.</div>`;
+  <div class="hint">All sounds are recordings from Kenney, Still North Media, OpenGameArt and Meta's Oculus Audio Pack; the sound board lists them with credits. Ambience is the roar of the melee, hooves, marching feet and wind. Press M to mute.</div>`;
   $('#sdBoard').onclick=()=>{ closePops(); showSoundBoard(); };
   $('#sdTest').onclick=()=>{ if(!AUD.on){ audSetOn(true); renderSoundBtn(); } audPreview(); };
   $('#sdX').onclick=closePops;

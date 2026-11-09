@@ -1,144 +1,320 @@
 {
- "clang": [
-  [
-   "clang_0.mp3",
-   "impactMetal_light_000.ogg"
+ "credits": {
+  "kenney": "Kenney (CC0)",
+  "stillnorth": "Still North Media, Medieval Weapons and Firearm Sound Libraries (CC0)",
+  "oga": "Ogrebane, Battle Sound Effects, OpenGameArt (CC0)",
+  "meta": "Oculus Audio Pack 01 by Oculus VR, LLC (CC BY 4.0)"
+ },
+ "files": {
+  "clang": [
+   [
+    "clang_0.mp3",
+    "blade-on-blade hit 1",
+    "stillnorth"
+   ],
+   [
+    "clang_1.mp3",
+    "blade-on-blade hit 2",
+    "stillnorth"
+   ],
+   [
+    "clang_2.mp3",
+    "blade-on-blade hit 3",
+    "stillnorth"
+   ],
+   [
+    "clang_3.mp3",
+    "blade-on-blade hit 4",
+    "stillnorth"
+   ],
+   [
+    "clang_4.mp3",
+    "blade-on-blade hit 5",
+    "stillnorth"
+   ],
+   [
+    "clang_5.mp3",
+    "blade-on-blade hit 6",
+    "stillnorth"
+   ],
+   [
+    "clang_6.mp3",
+    "blade-on-blade hit 7",
+    "stillnorth"
+   ],
+   [
+    "clang_7.mp3",
+    "blade-on-blade hit 8",
+    "stillnorth"
+   ]
   ],
-  [
-   "clang_1.mp3",
-   "impactMetal_light_001.ogg"
+  "wood": [
+   [
+    "wood_0.mp3",
+    "impactWood_medium_000",
+    "kenney"
+   ],
+   [
+    "wood_1.mp3",
+    "impactWood_medium_001",
+    "kenney"
+   ],
+   [
+    "wood_2.mp3",
+    "impactWood_medium_002",
+    "kenney"
+   ],
+   [
+    "wood_3.mp3",
+    "impactWood_medium_003",
+    "kenney"
+   ],
+   [
+    "wood_4.mp3",
+    "impactWood_medium_004",
+    "kenney"
+   ]
   ],
-  [
-   "clang_2.mp3",
-   "impactMetal_light_002.ogg"
+  "thud": [
+   [
+    "thud_0.mp3",
+    "impactSoft_heavy_000",
+    "kenney"
+   ],
+   [
+    "thud_1.mp3",
+    "impactSoft_heavy_001",
+    "kenney"
+   ],
+   [
+    "thud_2.mp3",
+    "impactSoft_heavy_002",
+    "kenney"
+   ],
+   [
+    "thud_3.mp3",
+    "impactSoft_heavy_003",
+    "kenney"
+   ],
+   [
+    "thud_4.mp3",
+    "impactSoft_heavy_004",
+    "kenney"
+   ]
   ],
-  [
-   "clang_3.mp3",
-   "impactMetal_light_003.ogg"
+  "punch": [
+   [
+    "punch_0.mp3",
+    "impactPunch_heavy_000",
+    "kenney"
+   ],
+   [
+    "punch_1.mp3",
+    "impactPunch_heavy_001",
+    "kenney"
+   ],
+   [
+    "punch_2.mp3",
+    "impactPunch_heavy_002",
+    "kenney"
+   ],
+   [
+    "punch_3.mp3",
+    "impactPunch_heavy_003",
+    "kenney"
+   ],
+   [
+    "punch_4.mp3",
+    "impactPunch_heavy_004",
+    "kenney"
+   ]
   ],
-  [
-   "clang_4.mp3",
-   "impactMetal_light_004.ogg"
+  "struck": [
+   [
+    "struck_0.mp3",
+    "impactPunch_medium_000",
+    "kenney"
+   ],
+   [
+    "struck_1.mp3",
+    "impactPunch_medium_001",
+    "kenney"
+   ],
+   [
+    "struck_2.mp3",
+    "impactPunch_medium_002",
+    "kenney"
+   ],
+   [
+    "struck_3.mp3",
+    "impactPunch_medium_003",
+    "kenney"
+   ],
+   [
+    "struck_4.mp3",
+    "impactPunch_medium_004",
+    "kenney"
+   ]
+  ],
+  "woodH": [
+   [
+    "woodH_0.mp3",
+    "impactWood_heavy_000",
+    "kenney"
+   ],
+   [
+    "woodH_1.mp3",
+    "impactWood_heavy_001",
+    "kenney"
+   ],
+   [
+    "woodH_2.mp3",
+    "impactWood_heavy_002",
+    "kenney"
+   ]
+  ],
+  "whoosh": [
+   [
+    "whoosh_0.mp3",
+    "WHSH_WhooshMedium_OS_01",
+    "meta"
+   ],
+   [
+    "whoosh_1.mp3",
+    "WHSH_WhooshMedium_OS_02",
+    "meta"
+   ],
+   [
+    "whoosh_2.mp3",
+    "WHSH_WhooshMedium_OS_03",
+    "meta"
+   ]
+  ],
+  "xbow": [
+   [
+    "xbow_0.mp3",
+    "Bow",
+    "oga"
+   ]
+  ],
+  "musket": [
+   [
+    "musket_0.mp3",
+    "gunshot (last of burst)",
+    "stillnorth"
+   ],
+   [
+    "musket_1.mp3",
+    "gunshot (first of burst)",
+    "stillnorth"
+   ]
+  ],
+  "cannon": [
+   [
+    "cannon_0.mp3",
+    "lowFrequency_explosion_000",
+    "kenney"
+   ],
+   [
+    "cannon_1.mp3",
+    "lowFrequency_explosion_001",
+    "kenney"
+   ]
+  ],
+  "blast": [
+   [
+    "blast_0.mp3",
+    "explosionCrunch_000",
+    "kenney"
+   ],
+   [
+    "blast_1.mp3",
+    "explosionCrunch_001",
+    "kenney"
+   ]
+  ],
+  "drum": [
+   [
+    "drum_0.mp3",
+    "MUSCStngr_MarchingSnare_OS_01",
+    "meta"
+   ]
+  ],
+  "hornWave": [
+   [
+    "hornWave_0.mp3",
+    "MUSCStngr_SnareCrash_OS_01",
+    "meta"
+   ]
+  ],
+  "hornDefeat": [
+   [
+    "hornDefeat_0.mp3",
+    "MUSCStngr_LossOrchestral_OS_01",
+    "meta"
+   ]
+  ],
+  "fanfare": [
+   [
+    "fanfare_0.mp3",
+    "MUSCStngr_VictoryOrchestral_OS_01",
+    "meta"
+   ]
+  ],
+  "step": [
+   [
+    "step_0.mp3",
+    "FEETHmn_ShoeWoodWalk_OS_01",
+    "meta"
+   ],
+   [
+    "step_1.mp3",
+    "FEETHmn_ShoeWoodWalk_OS_02",
+    "meta"
+   ],
+   [
+    "step_2.mp3",
+    "FEETHmn_ShoeWoodWalk_OS_03",
+    "meta"
+   ],
+   [
+    "step_3.mp3",
+    "FEETHmn_ShoeWoodWalk_OS_04",
+    "meta"
+   ],
+   [
+    "step_4.mp3",
+    "FEETHmn_ShoeWoodWalk_OS_05",
+    "meta"
+   ]
+  ],
+  "wind": [
+   [
+    "wind_0.mp3",
+    "WINDVege_LightWindTreesBirds_LOOP_01 (12 s)",
+    "meta"
+   ]
+  ],
+  "coin": [
+   [
+    "coin_0.mp3",
+    "handleCoins2",
+    "kenney"
+   ]
+  ],
+  "tick": [
+   [
+    "tick_0.mp3",
+    "click_003",
+    "kenney"
+   ]
+  ],
+  "place": [
+   [
+    "place_0.mp3",
+    "drop_002",
+    "kenney"
+   ]
   ]
- ],
- "wood": [
-  [
-   "wood_0.mp3",
-   "impactWood_medium_000.ogg"
-  ],
-  [
-   "wood_1.mp3",
-   "impactWood_medium_001.ogg"
-  ],
-  [
-   "wood_2.mp3",
-   "impactWood_medium_002.ogg"
-  ],
-  [
-   "wood_3.mp3",
-   "impactWood_medium_003.ogg"
-  ],
-  [
-   "wood_4.mp3",
-   "impactWood_medium_004.ogg"
-  ]
- ],
- "thud": [
-  [
-   "thud_0.mp3",
-   "impactSoft_heavy_000.ogg"
-  ],
-  [
-   "thud_1.mp3",
-   "impactSoft_heavy_001.ogg"
-  ],
-  [
-   "thud_2.mp3",
-   "impactSoft_heavy_002.ogg"
-  ],
-  [
-   "thud_3.mp3",
-   "impactSoft_heavy_003.ogg"
-  ],
-  [
-   "thud_4.mp3",
-   "impactSoft_heavy_004.ogg"
-  ]
- ],
- "punch": [
-  [
-   "punch_0.mp3",
-   "impactPunch_heavy_000.ogg"
-  ],
-  [
-   "punch_1.mp3",
-   "impactPunch_heavy_001.ogg"
-  ],
-  [
-   "punch_2.mp3",
-   "impactPunch_heavy_002.ogg"
-  ],
-  [
-   "punch_3.mp3",
-   "impactPunch_heavy_003.ogg"
-  ],
-  [
-   "punch_4.mp3",
-   "impactPunch_heavy_004.ogg"
-  ]
- ],
- "struck": [
-  [
-   "struck_0.mp3",
-   "impactPunch_medium_000.ogg"
-  ],
-  [
-   "struck_1.mp3",
-   "impactPunch_medium_001.ogg"
-  ],
-  [
-   "struck_2.mp3",
-   "impactPunch_medium_002.ogg"
-  ],
-  [
-   "struck_3.mp3",
-   "impactPunch_medium_003.ogg"
-  ],
-  [
-   "struck_4.mp3",
-   "impactPunch_medium_004.ogg"
-  ]
- ],
- "woodH": [
-  [
-   "woodH_0.mp3",
-   "impactWood_heavy_000.ogg"
-  ],
-  [
-   "woodH_1.mp3",
-   "impactWood_heavy_001.ogg"
-  ],
-  [
-   "woodH_2.mp3",
-   "impactWood_heavy_002.ogg"
-  ]
- ],
- "coin": [
-  [
-   "coin_0.mp3",
-   "handleCoins2.ogg"
-  ]
- ],
- "tick": [
-  [
-   "tick_0.mp3",
-   "click_003.ogg"
-  ]
- ],
- "place": [
-  [
-   "place_0.mp3",
-   "drop_002.ogg"
-  ]
- ]
+ }
 }
