@@ -5,7 +5,7 @@
 #   test/game-test.html        local test build with an eval hook for the headless harness
 set -e
 cd "$(dirname "$0")"
-JS="src/data.js src/sim.js src/render.js src/audio.js src/game.js"
+JS="src/data.js src/sim.js src/render.js src/zzfx.js src/audio.js src/game.js"
 mkdir -p dist test
 js_bundle(){ printf '\n<script>\n(()=>{\n"use strict";\n'; cat $JS; printf "$1"; printf '\n})();\n</script>\n'; }
 { cat src/shell.html; js_bundle ''; } > dist/massive-armies.html

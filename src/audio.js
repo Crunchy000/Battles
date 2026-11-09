@@ -3,12 +3,12 @@
 // One-shots are placed by distance and screen side relative to the camera and rate-limited per kind,
 // so the loudest nearby events play first; continuous loops (melee din, hooves, marching, wind) follow
 // how much is happening near the camera.
-const AUD={ctx:null,on:true,vol:0.8,amb:0.7,ready:false,building:false,voices:0,MAXV:56,
+const AUD={ctx:null,on:true,vol:0.8,amb:0.7,style:'zzfx',ready:false,building:false,voices:0,MAXV:56,
   B:{}, bus:{}, beds:{}, tok:new Float32Array(EV_N), cand:[], din:0, hoof:0, march:0, sampleT:0,
   volley:0, volleyPan:0, volleyW:0, volleyT:0, lastPlace:0, L:[0,0,0]};
 const AUD_KEY='massive-armies-audio';
-function audLoadPrefs(){ try{ const p=JSON.parse(localStorage.getItem(AUD_KEY)||'null'); if(p){ AUD.on=p.on!==false; if(p.vol>=0&&p.vol<=1) AUD.vol=+p.vol; if(p.amb>=0&&p.amb<=1) AUD.amb=+p.amb; } }catch(e){} }
-function audSavePrefs(){ try{ localStorage.setItem(AUD_KEY,JSON.stringify({on:AUD.on,vol:AUD.vol,amb:AUD.amb})); }catch(e){} }
+function audLoadPrefs(){ try{ const p=JSON.parse(localStorage.getItem(AUD_KEY)||'null'); if(p){ AUD.on=p.on!==false; if(p.vol>=0&&p.vol<=1) AUD.vol=+p.vol; if(p.style==='classic'||p.style==='zzfx') AUD.style=p.style; if(p.amb>=0&&p.amb<=1) AUD.amb=+p.amb; } }catch(e){} }
+function audSavePrefs(){ try{ localStorage.setItem(AUD_KEY,JSON.stringify({on:AUD.on,vol:AUD.vol,amb:AUD.amb,style:AUD.style})); }catch(e){} }
 const AR=Math.random;
 
 /* ---------- synthesis helpers (plain arrays) ---------- */
@@ -169,6 +169,30 @@ function audBuild(){
   AUD.bus={master, sfx:mk(0.9), amb:mk(AUD.amb), ui:mk(0.45), mus:mk(0.75)};
   const tasks=[
     ()=>{ const rv=c.createConvolver(); rv.buffer=impulseResponse(SR); const g=mk(0.42); rv.connect(g); AUD.bus.wet=rv; },
+    ...sfxTasks(AUD.style),
+    ()=>{ B.loopDin=loopDin(SR); },
+    ()=>{ B.loopHoof=loopHooves(SR); B.loopMarch=loopMarch(SR); },
+    ()=>{ B.loopWind=loopWind(SR);
+      for(const [k,buf] of [['din',B.loopDin],['hoof',B.loopHoof],['march',B.loopMarch],['wind',B.loopWind]]){
+        const s=c.createBufferSource(); s.buffer=buf; s.loop=true; const f=c.createBiquadFilter(); f.type='lowpass'; f.frequency.value=4000; const g=c.createGain(); g.gain.value=0;
+        s.connect(f); f.connect(g); g.connect(AUD.bus.amb); s.start(c.currentTime+AR()*0.1); AUD.beds[k]={s,f,g}; }
+      AUD.ready=true; },
+  ];
+  runTasks(tasks);
+}
+// spread synthesis over several tasks so the page never stalls for long
+function runTasks(tasks,done){ const run=()=>{ const t=tasks.shift(); if(!t){ if(done) done(); return; } try{ t(); }catch(e){ console.warn('audio build failed',e); AUD.building=false; return; } setTimeout(run,0); }; run(); }
+// the one-shot effects, from ZzFX recipes or the original hand-built synthesis
+function sfxTasks(style){
+  const SR=AUD.ctx.sampleRate, B=AUD.B;
+  if(style==='zzfx'){
+    const take=(k,n,peak)=>{ B[k]=[]; for(let i=0;i<n;i++) B[k].push(toBuf([zzLayers(SR,ZZ[k]())],(peak||0.9)*(ZZ_GAIN[k]||1))); };
+    return [()=>{ take('clang',6); take('wood',3); }, ()=>{ take('thud',4); take('struck',4); }, ()=>{ take('whoosh',3); take('musket',4); },
+      ()=>{ take('cannon',2); take('impact',2); take('blast',1); }, ()=>{ take('launch',2); take('xbow',2); take('ballista',1); },
+      ()=>{ take('drum',1); take('coin',1); take('tick',1,0.5); take('place',3,0.5); },
+      ()=>{ for(const k of ['hornAdvance','hornWave','hornDefeat','fanfare']) B[k]=[toBuf([zzLayers(SR,ZZ_MUSIC[k]())],0.9*(ZZ_GAIN[k]||1))]; }];
+  }
+  return [
     ()=>{ B.clang=[0,1,2,3,4,5].map(()=>toBuf([sClang(SR,true)])); B.wood=[0,1,2].map(()=>toBuf([sClang(SR,false)])); },
     ()=>{ B.thud=[0,1,2,3].map(()=>toBuf([sThud(SR,95+AR()*70,0.22)])); B.struck=[0,1,2,3].map(()=>toBuf([sStruck(SR)])); },
     ()=>{ B.whoosh=[0,1,2].map(()=>toBuf([sWhoosh(SR)])); B.musket=[0,1,2,3].map(()=>toBuf([sMusket(SR)])); },
@@ -178,18 +202,12 @@ function audBuild(){
     ()=>{ B.drum=[toBuf([sDrum(SR)])]; B.coin=[toBuf([sBell(SR,[[1568,0],[2093,0.07]])])]; B.tick=[toBuf([sTock(SR)],0.5)]; B.place=[0,1,2].map(()=>toBuf([sTick(SR,320+AR()*160,0.04)],0.5)); },
     ()=>{ B.hornAdvance=[toBuf([sHorn(SR,[[98,0,0.55],[146.8,0.62,1.5]])])]; B.hornWave=[toBuf([sHorn(SR,[[110,0,1.3]])])]; },
     ()=>{ B.hornDefeat=[toBuf([sHorn(SR,[[110,0,0.8],[82.4,0.85,1.9]])])]; B.fanfare=[toBuf([sFanfare(SR)])]; },
-    ()=>{ B.loopDin=loopDin(SR); },
-    ()=>{ B.loopHoof=loopHooves(SR); B.loopMarch=loopMarch(SR); },
-    ()=>{ B.loopWind=loopWind(SR);
-      for(const [k,buf] of [['din',B.loopDin],['hoof',B.loopHoof],['march',B.loopMarch],['wind',B.loopWind]]){
-        const s=c.createBufferSource(); s.buffer=buf; s.loop=true; const f=c.createBiquadFilter(); f.type='lowpass'; f.frequency.value=4000; const g=c.createGain(); g.gain.value=0;
-        s.connect(f); f.connect(g); g.connect(AUD.bus.amb); s.start(c.currentTime+AR()*0.1); AUD.beds[k]={s,f,g}; }
-      AUD.ready=true; },
   ];
-  // spread the synthesis over several tasks so the page never stalls for long
-  const run=()=>{ const t=tasks.shift(); if(!t) return; try{ t(); }catch(e){ console.warn('audio build failed',e); AUD.building=false; return; } if(tasks.length) setTimeout(run,0); };
-  run();
 }
+function audSetStyle(style){ if(style===AUD.style) return; AUD.style=style; audSavePrefs(); if(AUD.ctx&&AUD.ready) runTasks(sfxTasks(style),()=>audPreview()); }
+// a short run of effects to hear the current set
+function audPreview(){ if(!audLive()) return; const B=AUD.B, seq=[['clang',.5,0],['wood',.5,.18],['thud',.6,.34],['xbow',.45,.6],['musket',.55,.85],['launch',.6,1.15],['impact',.7,1.6],['cannon',.75,2.05],['coin',.4,2.9]];
+  for(const [k,g,d] of seq) audPlay(B[k],g,(AR()-.5)*.6,1,0,.15,d); audPlay(B.whoosh,.4,0,1,0,.2,.7); }
 function audUnlock(){
   if(!AUD.on) return;
   if(!AUD.ctx){ const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return; try{ AUD.ctx=new AC({latencyHint:'interactive'}); }catch(e){ return; } AUD.building=true; audBuild(); }
