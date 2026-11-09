@@ -12,12 +12,12 @@ let N=0, tick=0, simTime=0;
 const F=()=>new Float32Array(MAXU);
 const PX=F(),PZ=F(),OX=F(),OZ=F(),PY=F(),VX=F(),VZ=F(),FA=F(),HP=F(),MO=F(),CD=F(),AT=F(),FL=F(),DE=F(),BA=F(),BS=F(),CH=F(),SX=F(),SZ=F(),SA=F(),STN=F(),STK=F(),STU=F();
 const TM=new Uint8Array(MAXU), TY=new Uint8Array(MAXU), SS=new Uint8Array(MAXU), FG=new Uint8Array(MAXU);
-const GR=new Int32Array(MAXU), TG=new Int32Array(MAXU), KL=new Uint16Array(MAXU);
-const ALLARR=[PX,PZ,OX,OZ,PY,VX,VZ,FA,HP,MO,CD,AT,FL,DE,BA,BS,CH,SX,SZ,SA,STN,STK,STU,TM,TY,SS,FG,GR,TG,KL];
+const GR=new Int32Array(MAXU), TG=new Int32Array(MAXU), KL=new Uint16Array(MAXU), RC=new Uint8Array(MAXU);   // RC: times routed
+const ALLARR=[PX,PZ,OX,OZ,PY,VX,VZ,FA,HP,MO,CD,AT,FL,DE,BA,BS,CH,SX,SZ,SA,STN,STK,STU,TM,TY,SS,FG,GR,TG,KL,RC];
 let STT=[computeStats(lvZero,{}),computeStats(lvZero,{})];
 let G=[];
 
-const B={rules:{morale:true,rain:false}, start:[0,0], dead:[0,0], esc:[0,0], active:[0,0], fleeing:[0,0], startT:[new Int32Array(NT),new Int32Array(NT)], deadT:[new Int32Array(NT),new Int32Array(NT)],
+const B={rules:{morale:true,rain:false}, start:[0,0], dead:[0,0], esc:[0,0], active:[0,0], fleeing:[0,0], startT:[new Int32Array(NT),new Int32Array(NT)], deadT:[new Int32Array(NT),new Int32Array(NT)], escT:[new Int32Array(NT),new Int32Array(NT)], broken:[false,false],
   combat:[0,0], hunt:false, noRout:false, noHunt:false, phaseT:0, shieldBlock:[.5,.5], adjBlock:[.3,.3], shieldArm:[3,3], armyLoss:[0,0], hasMelee:[1,1], onKill:null, onEscape:null, tcx:[0,0], tcz:[0,0]};
 const TEAMCOL=[[0.24,0.45,0.90],[0.86,0.27,0.22]];
 
@@ -150,7 +150,7 @@ function initUnit(i,team,type,x,z,a,gi,sx,sz,sa){
   const st=STT[team][type];
   PX[i]=OX[i]=x; PZ[i]=OZ[i]=z; PY[i]=heightAt(x,z); VX[i]=VZ[i]=0; FA[i]=a; HP[i]=st.hp; MO[i]=st.morale;
   CD[i]=st.isR? rnd()*0.25 : rnd()*0.6; AT[i]=0; FL[i]=0; DE[i]=0; BA[i]=0; BS[i]=0; CH[i]=0; SX[i]=sx; SZ[i]=sz; SA[i]=sa; STN[i]=0; STK[i]=0; STU[i]=0;
-  TM[i]=team; TY[i]=type; SS[i]=1; FG[i]=0; GR[i]=gi; TG[i]=-1; KL[i]=0;
+  TM[i]=team; TY[i]=type; SS[i]=1; FG[i]=0; GR[i]=gi; TG[i]=-1; KL[i]=0; RC[i]=0;
 }
 function makeBattleGroup(dg){
   let rad=2; for(let k=0;k<dg.slots.length;k+=3) rad=Math.max(rad,Math.hypot(dg.slots[k],dg.slots[k+1]));
@@ -180,7 +180,7 @@ function assignFlankSides(){
 function resetBattle(){
   N=0; G=[]; tick=0; simTime=0;
   B.start=[0,0]; B.dead=[0,0]; B.esc=[0,0]; B.active=[0,0]; B.fleeing=[0,0]; B.armyLoss=[0,0];
-  B.startT=[new Int32Array(NT),new Int32Array(NT)]; B.deadT=[new Int32Array(NT),new Int32Array(NT)]; B.lastKill=0; B.phaseT=0; B.noHunt=false;
+  B.startT=[new Int32Array(NT),new Int32Array(NT)]; B.deadT=[new Int32Array(NT),new Int32Array(NT)]; B.escT=[new Int32Array(NT),new Int32Array(NT)]; B.broken=[false,false]; B.lastKill=0; B.phaseT=0; B.noHunt=false;
   clearProjectiles();
 }
 function setAbilities(team,ab){ B.shieldBlock[team]=ab.shieldwall?.7:.5; B.adjBlock[team]=ab.shieldwall?.45:.3; B.shieldArm[team]=ab.shieldwall?5:3; }
@@ -201,7 +201,7 @@ function damage(t,dmg,src){
   if(SS[t]!==1&&SS[t]!==2) return;
   HP[t]-=dmg; FL[t]=1;
   const b=STT[TM[t]][TY[t]];
-  if(B.rules.morale && !b.noFlee) MO[t]-=dmg/b.hp*14;
+  if(B.rules.morale && !b.noFlee) MO[t]-=dmg/b.hp*10;
   if(HP[t]<=0) kill(t,src);
 }
 function kill(t,src){
@@ -216,7 +216,7 @@ function kill(t,src){
   if(B.rules.morale){
     const x=PX[t], z=PZ[t];
     if(UNITS[ty].id==='cmdr') forEachIn(tm,x,z,15,j=>{ MO[j]-=25; });
-    else forEachIn(tm,x,z,4,j=>{ MO[j]-=3; });
+    else forEachIn(tm,x,z,4,j=>{ MO[j]-=2; });
   }
 }
 function knock(t,kx,kz){
@@ -246,7 +246,7 @@ function meleeHit(i,t,mult){
     CH[i]= a.id==='lancer'?0.25:0;
     dustPuff(PX[t],PY[t],PZ[t],2);
   }
-  if(SS[t]===2) dmg*=1.3;
+  if(SS[t]===2) dmg*=1.6;   // a routed soldier does not defend himself
   let arm=b.armor+(BS[t]>0?B.shieldArm[TM[t]]:0); arm*=1-a.pen;
   dmg*=12/(12+Math.max(0,arm));
   AT[i]=1; sfx(EV_HIT,PX[t],PY[t],PZ[t]);
@@ -382,10 +382,10 @@ function simTick(){
       if(((tick+i)&3)===0) TG[i]=nearestIn(tm^1,x,z,11,false);
       const e=TG[i];
       if(e>=0 && SS[e]===1){ const ex=x-PX[e], ez=z-PZ[e], d=Math.hypot(ex,ez)||1; if(d<11){ ax+=ex/d*1.4; az+=ez/d*1.4; enemyNear=true; } }
-      const al=Math.hypot(ax,az)||1; dvx=ax/al*spd*1.1; dvz=az/al*spd*1.1;
-      MO[i]+=DT*(enemyNear?0.3:(BA[i]>0?8:3));
-      if(!enemyNear && MO[i]>st.morale*0.45){ SS[i]=1; TG[i]=-1; }
-      if((tm===0&&x<X0+1.6)||(tm===1&&x>X1-1.6)){ SS[i]=3; B.esc[tm]++; if(B.onEscape) B.onEscape(i); continue; }
+      const al=Math.hypot(ax,az)||1; dvx=ax/al*spd*0.9; dvz=az/al*spd*0.9;
+      // routed troops only recover beside a commander, and a soldier who has broken twice never returns
+      if(BA[i]>0 && RC[i]<2){ MO[i]+=DT*(enemyNear?0.5:8); if(!enemyNear && MO[i]>st.morale*0.45){ SS[i]=1; TG[i]=-1; } }
+      if((tm===0&&x<X0+1.6)||(tm===1&&x>X1-1.6)){ SS[i]=3; B.esc[tm]++; B.escT[tm][ty]++; if(B.onEscape) B.onEscape(i); continue; }
       B.fleeing[tm]++;
     } else {
       if(tgt>=0 && SS[tgt]!==1 && SS[tgt]!==2) tgt=-1;
@@ -461,9 +461,9 @@ function simTick(){
       if(morale && !st.noFlee){
         if(BA[i]>0) MO[i]=Math.min(st.morale,MO[i]+DT*4);
         else if(tgt<0) MO[i]=Math.min(st.morale,MO[i]+DT);
-        if(g.alive<g.n0*0.4) MO[i]-=DT*1.5;
+        if(g.alive<g.n0*0.3) MO[i]-=DT*1.5;
         if(B.armyLoss[tm]>0.6) MO[i]-=DT;
-        if(MO[i]<st.morale*0.12){ SS[i]=2; TG[i]=-1; }
+        if(MO[i]<st.morale*0.12){ SS[i]=2; TG[i]=-1; RC[i]++; }
       }
       B.active[tm]++;
     }
@@ -492,10 +492,12 @@ function simTick(){
   for(let t=0;t<2;t++){
     B.armyLoss[t]= B.start[t]? 1-(B.active[t]+B.fleeing[t])/B.start[t] : 0;
     // crews and medics abandon the field once no fighting troops remain
-    if(B.combat[t]===0 && B.active[t]>0 && !B.noRout){ for(let i=0;i<N;i++) if(TM[i]===t && SS[i]===1){ SS[i]=2; TG[i]=-1; MO[i]=0; } }
+    if(B.combat[t]===0 && B.active[t]>0 && !B.noRout) breakArmy(t);
   }
 }
 
+// the whole army routes for good: no rallies, the battle ends once the field clears of fighters
+function breakArmy(t){ B.broken[t]=true; for(let i=0;i<N;i++) if(TM[i]===t && SS[i]===1){ SS[i]=2; TG[i]=-1; MO[i]=0; RC[i]=9; } }
 function separation(){
   SEPX.fill(0,0,N); SEPZ.fill(0,0,N);
   // walk units in cell order; neighbours come from the cell-sorted copies built in buildGrids
@@ -592,7 +594,7 @@ function projHit(p,j){
   let dmg=PRD[p]*(0.85+0.3*rnd());
   let arm=b.armor+(BS[j]>0?B.shieldArm[TM[j]]:0); arm*=1-PRN[p];
   dmg*=12/(12+Math.max(0,arm));
-  if(SS[j]===2) dmg*=1.2;
+  if(SS[j]===2) dmg*=1.5;
   if(B.rules.morale && !b.noFlee) MO[j]-=2;
   sfx(EV_STRUCK,PX[j],PY[j],PZ[j]);
   damage(j,dmg,PRO[p]);

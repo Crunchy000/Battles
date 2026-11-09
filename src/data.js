@@ -42,7 +42,7 @@ const UNITS=[
  {id:'spear', name:'Spearmen',  cls:'inf', hp:95, armor:2, dmg:12,aps:0.9, speed:3.0,range:2.0,morale:62, cost:12, r:.40,sp:1.1,mass:1,  scale:1,   foot:.55, antiCav:2.5, brace:1, role:'Anti-cavalry', desc:'Long reach. Deals 2.5× damage to cavalry and stops charges that hit them head-on.'},
  {id:'shield',name:'Shieldbearers',cls:'inf',hp:150,armor:7,dmg:8, aps:0.8, speed:2.7,range:0.9,morale:75, cost:18, r:.46,sp:1.2,mass:1.4,scale:1,   foot:.6,  shield:1, role:'Defensive wall', desc:'Blocks arrows from the front and armours troops standing beside them.'},
  {id:'heavy', name:'Heavy Infantry',cls:'inf',hp:230,armor:10,dmg:20,aps:0.7,speed:2.2,range:1.0,morale:85, cost:30, r:.50,sp:1.3,mass:1.8,scale:1.15,foot:.65, role:'Armoured front', desc:'Slow, heavily armoured troops that anchor the line.'},
- {id:'bers',  name:'Berserkers',cls:'inf', hp:120,armor:0, dmg:30,aps:1.4, speed:4.1,range:0.9,morale:100,cost:22, r:.44,sp:1.15,mass:1.1,scale:1,  foot:.55, noFlee:1, role:'Shock troops', desc:'Huge damage and no armour. They never rout.'},
+ {id:'bers',  name:'Berserkers',cls:'inf', hp:90, armor:0, dmg:24,aps:1.2, speed:4.1,range:0.9,morale:100,cost:22, r:.44,sp:1.15,mass:1.1,scale:1,  foot:.55, noFlee:1, role:'Shock troops', desc:'Huge damage and no armour. They never rout.'},
  {id:'archer',name:'Archers',   cls:'rng', hp:70, armor:1, dmg:10,aps:0.55,speed:3.0,range:36, morale:45, cost:12, r:.40,sp:1.1,mass:.9, scale:1,   foot:.5,  proj:0, acc:.045, role:'Volley fire', desc:'Lob volleys of arrows over friendly lines.'},
  {id:'xbow',  name:'Crossbowmen',cls:'rng',hp:80, armor:3, dmg:24,aps:0.3, speed:2.8,range:32, morale:50, cost:18, r:.42,sp:1.1,mass:1,  scale:1,   foot:.55, proj:1, acc:.03, pen:.7, role:'Armour piercing', desc:'Slow-loading bolts that ignore 70% of armour.'},
  {id:'musket',name:'Musketeers',cls:'rng', hp:85, armor:2, dmg:48,aps:0.18,speed:2.8,range:28, morale:55, cost:28, r:.42,sp:1.1,mass:1,  scale:1,   foot:.55, proj:2, acc:.028, pen:.8, role:'Gunpowder', desc:'Devastating flat volleys with long reloads.'},
@@ -53,7 +53,7 @@ const UNITS=[
  {id:'ballista',name:'Ballistae',cls:'sie',hp:180,armor:2, dmg:80,aps:0.25,speed:1.5,range:72, morale:40, cost:110,r:1.0,sp:4,  mass:10, scale:1,   foot:1.5, proj:4, acc:.015, pierce:5, minR:8, role:'Precision', desc:'Bolts that skewer up to five soldiers in a file.'},
  {id:'cannon',name:'Cannons',   cls:'sie', hp:240,armor:4, dmg:95,aps:0.15,speed:1.3,range:88, morale:40, cost:180,r:1.1,sp:4.5,mass:12, scale:1,   foot:1.6, proj:5, acc:.03, pierce:8, minR:10, role:'Bouncing shot', desc:'Round shot bounces through ranks, hitting everyone in its path.'},
  {id:'mortar',name:'Mortars',   cls:'sie', hp:190,armor:3, dmg:75,aps:0.12,speed:1.2,range:68, morale:40, cost:160,r:1.0,sp:4,  mass:10, scale:1,   foot:1.5, proj:6, acc:.06, aoe:4.5, minR:15, role:'High angle', desc:'Explosive shells dropped from above. Walls give no cover.'},
- {id:'cmdr',  name:'Commanders',cls:'sup', hp:320,armor:8, dmg:24,aps:0.8, speed:3.4,range:1.1,morale:100,cost:150,r:.50,sp:2.5,mass:2,  scale:1.2, foot:.7,  aura:12, noFlee:1, role:'Leadership', desc:'Nearby troops deal 25% more damage and recover morale.'},
+ {id:'cmdr',  name:'Commanders',cls:'sup', hp:320,armor:8, dmg:24,aps:0.8, speed:3.4,range:1.1,morale:100,cost:150,r:.50,sp:2.5,mass:2,  scale:1.2, foot:.7,  aura:12, noFlee:1, role:'Leadership', desc:'Nearby troops deal 25% more damage and recover morale. Routed soldiers can only rally beside a commander.'},
  {id:'medic', name:'Medics',    cls:'sup', hp:70, armor:1, dmg:4, aps:0.5, speed:3.2,range:0.9,morale:50, cost:40, r:.40,sp:1.6,mass:.9, scale:1,   foot:.5,  heal:7, role:'Healing', desc:'Heal the most wounded soldier nearby and keep clear of melee.'},
  {id:'eng',   name:'Engineers', cls:'sup', hp:90, armor:2, dmg:8, aps:0.8, speed:3.0,range:0.9,morale:50, cost:40, r:.42,sp:1.6,mass:1,  scale:1,   foot:.55, stakes:1, role:'Fieldworks', desc:'Plant sharpened stakes ahead of them that maul enemy cavalry.'},
  {id:'elite', name:'Champions', cls:'inf', hp:650,armor:12,dmg:55,aps:1.0, speed:3.6,range:1.5,morale:100,cost:300,r:.55,sp:1.6,mass:3,  scale:1.35,foot:.8,  noFlee:1, cleave:2, role:'Elite', desc:'Rare heroes whose blows cleave through two extra enemies.'},
@@ -66,17 +66,23 @@ const CLS_NAMES={inf:'Infantry',rng:'Ranged',cav:'Cavalry',sie:'Siege',sup:'Supp
 
 /* ---------- Tech tree ---------- */
 const BRANCHES=['Infantry','Ranged','Cavalry','Siege','Command','Logistics'];
+// Upgrade lines: researching the next unit in a line re-equips every soldier of the previous tier,
+// and the old type retires from your roster, so a developed army keeps a short list of unit types.
+const LINES=[['sword','heavy','elite'],['archer','xbow','musket'],['lcav','hcav','lancer'],['cata','mortar'],['ballista','cannon']];
+const PREV_TIER={}, NEXT_TIER={};
+LINES.forEach(l=>l.forEach((id,k)=>{ if(k>0) PREV_TIER[id]=l[k-1]; if(k<l.length-1) NEXT_TIER[id]=l[k+1]; }));
 const TECH=[
  {id:'sword', b:0,name:'Swordsmen',cost:0,req:[],unit:'sword'},
  {id:'spear', b:0,name:'Spearmen',cost:120,req:['sword'],unit:'spear'},
  {id:'shield',b:0,name:'Shieldbearers',cost:350,req:['spear'],unit:'shield'},
  {id:'shieldwall',b:0,name:'Shield Wall',cost:800,req:['shield'],desc:'Shieldbearers block 70% of frontal missiles and give +5 armour to neighbours.'},
- {id:'heavy', b:0,name:'Heavy Infantry',cost:900,req:['shield'],unit:'heavy'},
  {id:'bers',  b:0,name:'Berserkers',cost:600,req:['spear'],unit:'bers'},
+ {id:'heavy', b:0,name:'Heavy Infantry',cost:900,req:['shield'],unit:'heavy'},
+ {id:'elite', b:0,name:'Champions',cost:4500,req:['heavy','cmdr'],unit:'elite'},
  {id:'archer',b:1,name:'Archers',cost:0,req:[],unit:'archer'},
- {id:'firearrows',b:1,name:'Fire Arrows',cost:450,req:['archer'],desc:'Archers deal 40% more damage.'},
+ {id:'firearrows',b:1,name:'Bodkin Arrows',cost:450,req:['archer'],desc:'Archers and crossbowmen deal 30% more damage.'},
  {id:'xbow',  b:1,name:'Crossbowmen',cost:450,req:['archer'],unit:'xbow'},
- {id:'gunpowder',b:1,name:'Gunpowder',cost:1600,req:['xbow'],desc:'Opens firearms: Musketeers and Cannons.'},
+ {id:'gunpowder',b:1,name:'Gunpowder',cost:1600,req:['xbow'],desc:'Opens firearms: Musketeers, Mortars and Cannons.'},
  {id:'musket',b:1,name:'Musketeers',cost:1400,req:['gunpowder'],unit:'musket'},
  {id:'lcav',  b:2,name:'Light Cavalry',cost:250,req:['sword'],unit:'lcav'},
  {id:'hcav',  b:2,name:'Heavy Cavalry',cost:950,req:['lcav'],unit:'hcav'},
@@ -84,15 +90,14 @@ const TECH=[
  {id:'lancer',b:2,name:'Lancers',cost:1800,req:['hcav'],unit:'lancer'},
  {id:'cata',  b:3,name:'Catapults',cost:650,req:['archer'],unit:'cata'},
  {id:'ballista',b:3,name:'Ballistae',cost:1100,req:['cata'],unit:'ballista'},
- {id:'cannon',b:3,name:'Cannons',cost:2800,req:['cata','gunpowder'],unit:'cannon'},
- {id:'shells',b:3,name:'Explosive Shells',cost:3200,req:['cannon'],desc:'Siege blast radius grows by 40%.'},
- {id:'mortar',b:3,name:'Mortars',cost:3800,req:['cannon'],unit:'mortar'},
+ {id:'mortar',b:3,name:'Mortars',cost:3200,req:['cata','gunpowder'],unit:'mortar'},
+ {id:'cannon',b:3,name:'Cannons',cost:2800,req:['ballista','gunpowder'],unit:'cannon'},
+ {id:'shells',b:3,name:'Explosive Shells',cost:3200,req:['mortar'],desc:'Blast radius of catapults and mortars grows by 40%.'},
  {id:'cmdr',  b:4,name:'Commanders',cost:750,req:['sword'],unit:'cmdr'},
- {id:'hymn',  b:4,name:'Battle Hymn',cost:1300,req:['cmdr'],desc:'Commander aura reaches 50% further; routed troops rally faster.'},
+ {id:'hymn',  b:4,name:'Battle Hymn',cost:1300,req:['cmdr'],desc:'Commander aura reaches 50% further, so routed troops rally from further away.'},
  {id:'medic', b:4,name:'Medics',cost:900,req:['cmdr'],unit:'medic'},
  {id:'surgery',b:4,name:'Field Surgery',cost:1600,req:['medic'],desc:'Medics heal twice as fast.'},
  {id:'eng',   b:4,name:'Engineers',cost:1100,req:['cmdr'],unit:'eng'},
- {id:'elite', b:4,name:'Champions',cost:4500,req:['bers','cmdr'],unit:'elite'},
  {id:'log1',b:5,name:'Logistics I',cost:150,req:[],cap:250},
  {id:'log2',b:5,name:'Logistics II',cost:600,req:['log1'],cap:500},
  {id:'log3',b:5,name:'Logistics III',cost:2000,req:['log2'],cap:1000},
@@ -126,7 +131,7 @@ function computeStats(lv, ab){
     s.dmg=u.dmg*(1+0.10*lv(c,'dmg'));
     s.cdT=1/(u.aps*(1+0.08*lv(c,'aps')));
     s.speed=u.speed*(1+0.05*lv(c,'spd'));
-    if(ab.firearrows && u.id==='archer') s.dmg*=1.4;
+    if(ab.firearrows && (u.id==='archer'||u.id==='xbow')) s.dmg*=1.3;
     s.charge=(u.charge||0)*(ab.thunder?1.5:1);
     s.aoe=(u.aoe||0)*(ab.shells?1.4:1);
     s.aura=u.aura?u.aura*(ab.hymn?1.5:1):0;
@@ -414,7 +419,8 @@ function passAtT(T,x,z){ if(x<X0||x>=X1||z<Z0||z>=Z1) return false; const i=((x-
 function genArmy(team,total,pool,style,seed,T,opt){ const R=mulberry32(seed); return layoutArmy(team, armyCounts(total,pool,style,R), T, opt); }
 
 /* ---------- Campaign ---------- */
-const POOL_AT=[[1,'sword'],[1,'archer'],[2,'spear'],[3,'lcav'],[4,'shield'],[5,'cata'],[6,'xbow'],[6,'cmdr'],[7,'hcav'],[8,'bers'],[8,'medic'],[9,'ballista'],[10,'heavy'],[11,'musket'],[11,'eng'],[12,'lancer'],[12,'cannon'],[14,'mortar'],[16,'elite']];
+const POOL_AT=[[1,'sword'],[1,'archer'],[2,'spear'],[3,'lcav'],[4,'shield'],[5,'cata'],[6,'cmdr'],[7,'xbow'],[8,'hcav'],[8,'bers'],[9,'medic'],[9,'ballista'],[11,'eng'],[12,'heavy'],[13,'musket'],[14,'lancer'],[14,'cannon'],[16,'mortar'],[18,'elite']];
+function poolAt(L){ const ids=POOL_AT.filter(p=>p[0]<=L).map(p=>p[1]); return ids.filter(id=>!(NEXT_TIER[id]&&ids.includes(NEXT_TIER[id]))); }
 const MAP_CYCLE=['grassland','hills','forest','river','pass','desert','fortress'];
 const STYLE_CYCLE=['balanced','horde','ranged','cavalry','balanced','siege','horde'];
 const ROMAN=['','','II','III','IV','V','VI','VII','VIII','IX','X'];
@@ -422,7 +428,7 @@ function campaignLevel(L){
   const mapId=MAP_CYCLE[(L-1)%7];
   const cycle=Math.floor((L-1)/7)+1;
   const count=Math.min(30000,Math.round(60*Math.pow(1.3,L-1)));
-  const pool=POOL_AT.filter(p=>p[0]<=L).map(p=>p[1]);
+  const pool=poolAt(L);
   return {L,mapId,count,pool,style:STYLE_CYCLE[(L-1)%7],ulv:Math.min(5,Math.floor((L-1)/3)),seed:1000+L*7919,
     name:BATTLE_NAMES[mapId]+(cycle>1?' '+(ROMAN[cycle]||cycle):''), reward:Math.round(80+L*45*Math.pow(1.18,L))};
 }

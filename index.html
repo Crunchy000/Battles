@@ -147,6 +147,7 @@ table.cas td .uicon{width:16px;height:16px}
   .modal{align-items:flex-end;padding:0}
   .sheet{border-radius:16px 16px 0 0;max-height:90%;padding:16px max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 18px) max(16px,env(safe-area-inset-left,0px))}
 }
+.sheet>*{flex-shrink:0}
 .sheet-h{display:flex;align-items:center;gap:12px}
 .sheet-h h2{margin:0;font-family:var(--f-display);font-weight:800;font-size:30px;letter-spacing:.03em;line-height:1;text-wrap:balance}
 .sheet-h .sub{font-family:var(--f-ui);color:var(--muted);font-size:14px;letter-spacing:.04em}
@@ -189,6 +190,7 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:12px;min-height:72px
 .node .nt{font-family:var(--f-ui);font-weight:600;font-size:15px;letter-spacing:.03em;display:flex;align-items:center;gap:6px;color:var(--fg)}
 .node .nt .uicon{width:18px;height:18px;color:var(--blue)}
 .node .nd{font-size:12.5px;color:var(--muted);line-height:1.35}
+.node .nd b.up{color:var(--brass-hi);font-weight:600}
 .node .req{font-family:var(--f-ui);font-size:12px;color:var(--dim);letter-spacing:.03em}
 .node .ok{font-family:var(--f-ui);font-size:12.5px;color:var(--good);letter-spacing:.05em;text-transform:uppercase}
 /* upgrades */
@@ -208,6 +210,7 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:12px;min-height:72px
 .goldlines{display:flex;flex-direction:column;gap:4px;font-family:var(--f-ui);font-size:15px;letter-spacing:.03em}
 .goldlines div{display:flex;justify-content:space-between;border-bottom:1px dashed var(--line2);padding-bottom:3px;color:var(--muted)}
 .goldlines div b{color:var(--brass-hi);font-variant-numeric:tabular-nums}
+.desert{font-family:var(--f-ui);font-size:14px;letter-spacing:.03em;color:var(--warn)}
 .goldlines div.total{color:var(--fg);border:0;font-size:17px}
 .welcome-mark{font-family:var(--f-display);font-weight:900;font-size:clamp(44px,11vw,76px);line-height:.9;letter-spacing:.02em;margin:0}
 .welcome-mark span{color:var(--brass)}
@@ -342,7 +345,7 @@ const UNITS=[
  {id:'spear', name:'Spearmen',  cls:'inf', hp:95, armor:2, dmg:12,aps:0.9, speed:3.0,range:2.0,morale:62, cost:12, r:.40,sp:1.1,mass:1,  scale:1,   foot:.55, antiCav:2.5, brace:1, role:'Anti-cavalry', desc:'Long reach. Deals 2.5× damage to cavalry and stops charges that hit them head-on.'},
  {id:'shield',name:'Shieldbearers',cls:'inf',hp:150,armor:7,dmg:8, aps:0.8, speed:2.7,range:0.9,morale:75, cost:18, r:.46,sp:1.2,mass:1.4,scale:1,   foot:.6,  shield:1, role:'Defensive wall', desc:'Blocks arrows from the front and armours troops standing beside them.'},
  {id:'heavy', name:'Heavy Infantry',cls:'inf',hp:230,armor:10,dmg:20,aps:0.7,speed:2.2,range:1.0,morale:85, cost:30, r:.50,sp:1.3,mass:1.8,scale:1.15,foot:.65, role:'Armoured front', desc:'Slow, heavily armoured troops that anchor the line.'},
- {id:'bers',  name:'Berserkers',cls:'inf', hp:120,armor:0, dmg:30,aps:1.4, speed:4.1,range:0.9,morale:100,cost:22, r:.44,sp:1.15,mass:1.1,scale:1,  foot:.55, noFlee:1, role:'Shock troops', desc:'Huge damage and no armour. They never rout.'},
+ {id:'bers',  name:'Berserkers',cls:'inf', hp:90, armor:0, dmg:24,aps:1.2, speed:4.1,range:0.9,morale:100,cost:22, r:.44,sp:1.15,mass:1.1,scale:1,  foot:.55, noFlee:1, role:'Shock troops', desc:'Huge damage and no armour. They never rout.'},
  {id:'archer',name:'Archers',   cls:'rng', hp:70, armor:1, dmg:10,aps:0.55,speed:3.0,range:36, morale:45, cost:12, r:.40,sp:1.1,mass:.9, scale:1,   foot:.5,  proj:0, acc:.045, role:'Volley fire', desc:'Lob volleys of arrows over friendly lines.'},
  {id:'xbow',  name:'Crossbowmen',cls:'rng',hp:80, armor:3, dmg:24,aps:0.3, speed:2.8,range:32, morale:50, cost:18, r:.42,sp:1.1,mass:1,  scale:1,   foot:.55, proj:1, acc:.03, pen:.7, role:'Armour piercing', desc:'Slow-loading bolts that ignore 70% of armour.'},
  {id:'musket',name:'Musketeers',cls:'rng', hp:85, armor:2, dmg:48,aps:0.18,speed:2.8,range:28, morale:55, cost:28, r:.42,sp:1.1,mass:1,  scale:1,   foot:.55, proj:2, acc:.028, pen:.8, role:'Gunpowder', desc:'Devastating flat volleys with long reloads.'},
@@ -353,7 +356,7 @@ const UNITS=[
  {id:'ballista',name:'Ballistae',cls:'sie',hp:180,armor:2, dmg:80,aps:0.25,speed:1.5,range:72, morale:40, cost:110,r:1.0,sp:4,  mass:10, scale:1,   foot:1.5, proj:4, acc:.015, pierce:5, minR:8, role:'Precision', desc:'Bolts that skewer up to five soldiers in a file.'},
  {id:'cannon',name:'Cannons',   cls:'sie', hp:240,armor:4, dmg:95,aps:0.15,speed:1.3,range:88, morale:40, cost:180,r:1.1,sp:4.5,mass:12, scale:1,   foot:1.6, proj:5, acc:.03, pierce:8, minR:10, role:'Bouncing shot', desc:'Round shot bounces through ranks, hitting everyone in its path.'},
  {id:'mortar',name:'Mortars',   cls:'sie', hp:190,armor:3, dmg:75,aps:0.12,speed:1.2,range:68, morale:40, cost:160,r:1.0,sp:4,  mass:10, scale:1,   foot:1.5, proj:6, acc:.06, aoe:4.5, minR:15, role:'High angle', desc:'Explosive shells dropped from above. Walls give no cover.'},
- {id:'cmdr',  name:'Commanders',cls:'sup', hp:320,armor:8, dmg:24,aps:0.8, speed:3.4,range:1.1,morale:100,cost:150,r:.50,sp:2.5,mass:2,  scale:1.2, foot:.7,  aura:12, noFlee:1, role:'Leadership', desc:'Nearby troops deal 25% more damage and recover morale.'},
+ {id:'cmdr',  name:'Commanders',cls:'sup', hp:320,armor:8, dmg:24,aps:0.8, speed:3.4,range:1.1,morale:100,cost:150,r:.50,sp:2.5,mass:2,  scale:1.2, foot:.7,  aura:12, noFlee:1, role:'Leadership', desc:'Nearby troops deal 25% more damage and recover morale. Routed soldiers can only rally beside a commander.'},
  {id:'medic', name:'Medics',    cls:'sup', hp:70, armor:1, dmg:4, aps:0.5, speed:3.2,range:0.9,morale:50, cost:40, r:.40,sp:1.6,mass:.9, scale:1,   foot:.5,  heal:7, role:'Healing', desc:'Heal the most wounded soldier nearby and keep clear of melee.'},
  {id:'eng',   name:'Engineers', cls:'sup', hp:90, armor:2, dmg:8, aps:0.8, speed:3.0,range:0.9,morale:50, cost:40, r:.42,sp:1.6,mass:1,  scale:1,   foot:.55, stakes:1, role:'Fieldworks', desc:'Plant sharpened stakes ahead of them that maul enemy cavalry.'},
  {id:'elite', name:'Champions', cls:'inf', hp:650,armor:12,dmg:55,aps:1.0, speed:3.6,range:1.5,morale:100,cost:300,r:.55,sp:1.6,mass:3,  scale:1.35,foot:.8,  noFlee:1, cleave:2, role:'Elite', desc:'Rare heroes whose blows cleave through two extra enemies.'},
@@ -366,17 +369,23 @@ const CLS_NAMES={inf:'Infantry',rng:'Ranged',cav:'Cavalry',sie:'Siege',sup:'Supp
 
 /* ---------- Tech tree ---------- */
 const BRANCHES=['Infantry','Ranged','Cavalry','Siege','Command','Logistics'];
+// Upgrade lines: researching the next unit in a line re-equips every soldier of the previous tier,
+// and the old type retires from your roster, so a developed army keeps a short list of unit types.
+const LINES=[['sword','heavy','elite'],['archer','xbow','musket'],['lcav','hcav','lancer'],['cata','mortar'],['ballista','cannon']];
+const PREV_TIER={}, NEXT_TIER={};
+LINES.forEach(l=>l.forEach((id,k)=>{ if(k>0) PREV_TIER[id]=l[k-1]; if(k<l.length-1) NEXT_TIER[id]=l[k+1]; }));
 const TECH=[
  {id:'sword', b:0,name:'Swordsmen',cost:0,req:[],unit:'sword'},
  {id:'spear', b:0,name:'Spearmen',cost:120,req:['sword'],unit:'spear'},
  {id:'shield',b:0,name:'Shieldbearers',cost:350,req:['spear'],unit:'shield'},
  {id:'shieldwall',b:0,name:'Shield Wall',cost:800,req:['shield'],desc:'Shieldbearers block 70% of frontal missiles and give +5 armour to neighbours.'},
- {id:'heavy', b:0,name:'Heavy Infantry',cost:900,req:['shield'],unit:'heavy'},
  {id:'bers',  b:0,name:'Berserkers',cost:600,req:['spear'],unit:'bers'},
+ {id:'heavy', b:0,name:'Heavy Infantry',cost:900,req:['shield'],unit:'heavy'},
+ {id:'elite', b:0,name:'Champions',cost:4500,req:['heavy','cmdr'],unit:'elite'},
  {id:'archer',b:1,name:'Archers',cost:0,req:[],unit:'archer'},
- {id:'firearrows',b:1,name:'Fire Arrows',cost:450,req:['archer'],desc:'Archers deal 40% more damage.'},
+ {id:'firearrows',b:1,name:'Bodkin Arrows',cost:450,req:['archer'],desc:'Archers and crossbowmen deal 30% more damage.'},
  {id:'xbow',  b:1,name:'Crossbowmen',cost:450,req:['archer'],unit:'xbow'},
- {id:'gunpowder',b:1,name:'Gunpowder',cost:1600,req:['xbow'],desc:'Opens firearms: Musketeers and Cannons.'},
+ {id:'gunpowder',b:1,name:'Gunpowder',cost:1600,req:['xbow'],desc:'Opens firearms: Musketeers, Mortars and Cannons.'},
  {id:'musket',b:1,name:'Musketeers',cost:1400,req:['gunpowder'],unit:'musket'},
  {id:'lcav',  b:2,name:'Light Cavalry',cost:250,req:['sword'],unit:'lcav'},
  {id:'hcav',  b:2,name:'Heavy Cavalry',cost:950,req:['lcav'],unit:'hcav'},
@@ -384,15 +393,14 @@ const TECH=[
  {id:'lancer',b:2,name:'Lancers',cost:1800,req:['hcav'],unit:'lancer'},
  {id:'cata',  b:3,name:'Catapults',cost:650,req:['archer'],unit:'cata'},
  {id:'ballista',b:3,name:'Ballistae',cost:1100,req:['cata'],unit:'ballista'},
- {id:'cannon',b:3,name:'Cannons',cost:2800,req:['cata','gunpowder'],unit:'cannon'},
- {id:'shells',b:3,name:'Explosive Shells',cost:3200,req:['cannon'],desc:'Siege blast radius grows by 40%.'},
- {id:'mortar',b:3,name:'Mortars',cost:3800,req:['cannon'],unit:'mortar'},
+ {id:'mortar',b:3,name:'Mortars',cost:3200,req:['cata','gunpowder'],unit:'mortar'},
+ {id:'cannon',b:3,name:'Cannons',cost:2800,req:['ballista','gunpowder'],unit:'cannon'},
+ {id:'shells',b:3,name:'Explosive Shells',cost:3200,req:['mortar'],desc:'Blast radius of catapults and mortars grows by 40%.'},
  {id:'cmdr',  b:4,name:'Commanders',cost:750,req:['sword'],unit:'cmdr'},
- {id:'hymn',  b:4,name:'Battle Hymn',cost:1300,req:['cmdr'],desc:'Commander aura reaches 50% further; routed troops rally faster.'},
+ {id:'hymn',  b:4,name:'Battle Hymn',cost:1300,req:['cmdr'],desc:'Commander aura reaches 50% further, so routed troops rally from further away.'},
  {id:'medic', b:4,name:'Medics',cost:900,req:['cmdr'],unit:'medic'},
  {id:'surgery',b:4,name:'Field Surgery',cost:1600,req:['medic'],desc:'Medics heal twice as fast.'},
  {id:'eng',   b:4,name:'Engineers',cost:1100,req:['cmdr'],unit:'eng'},
- {id:'elite', b:4,name:'Champions',cost:4500,req:['bers','cmdr'],unit:'elite'},
  {id:'log1',b:5,name:'Logistics I',cost:150,req:[],cap:250},
  {id:'log2',b:5,name:'Logistics II',cost:600,req:['log1'],cap:500},
  {id:'log3',b:5,name:'Logistics III',cost:2000,req:['log2'],cap:1000},
@@ -426,7 +434,7 @@ function computeStats(lv, ab){
     s.dmg=u.dmg*(1+0.10*lv(c,'dmg'));
     s.cdT=1/(u.aps*(1+0.08*lv(c,'aps')));
     s.speed=u.speed*(1+0.05*lv(c,'spd'));
-    if(ab.firearrows && u.id==='archer') s.dmg*=1.4;
+    if(ab.firearrows && (u.id==='archer'||u.id==='xbow')) s.dmg*=1.3;
     s.charge=(u.charge||0)*(ab.thunder?1.5:1);
     s.aoe=(u.aoe||0)*(ab.shells?1.4:1);
     s.aura=u.aura?u.aura*(ab.hymn?1.5:1):0;
@@ -714,7 +722,8 @@ function passAtT(T,x,z){ if(x<X0||x>=X1||z<Z0||z>=Z1) return false; const i=((x-
 function genArmy(team,total,pool,style,seed,T,opt){ const R=mulberry32(seed); return layoutArmy(team, armyCounts(total,pool,style,R), T, opt); }
 
 /* ---------- Campaign ---------- */
-const POOL_AT=[[1,'sword'],[1,'archer'],[2,'spear'],[3,'lcav'],[4,'shield'],[5,'cata'],[6,'xbow'],[6,'cmdr'],[7,'hcav'],[8,'bers'],[8,'medic'],[9,'ballista'],[10,'heavy'],[11,'musket'],[11,'eng'],[12,'lancer'],[12,'cannon'],[14,'mortar'],[16,'elite']];
+const POOL_AT=[[1,'sword'],[1,'archer'],[2,'spear'],[3,'lcav'],[4,'shield'],[5,'cata'],[6,'cmdr'],[7,'xbow'],[8,'hcav'],[8,'bers'],[9,'medic'],[9,'ballista'],[11,'eng'],[12,'heavy'],[13,'musket'],[14,'lancer'],[14,'cannon'],[16,'mortar'],[18,'elite']];
+function poolAt(L){ const ids=POOL_AT.filter(p=>p[0]<=L).map(p=>p[1]); return ids.filter(id=>!(NEXT_TIER[id]&&ids.includes(NEXT_TIER[id]))); }
 const MAP_CYCLE=['grassland','hills','forest','river','pass','desert','fortress'];
 const STYLE_CYCLE=['balanced','horde','ranged','cavalry','balanced','siege','horde'];
 const ROMAN=['','','II','III','IV','V','VI','VII','VIII','IX','X'];
@@ -722,7 +731,7 @@ function campaignLevel(L){
   const mapId=MAP_CYCLE[(L-1)%7];
   const cycle=Math.floor((L-1)/7)+1;
   const count=Math.min(30000,Math.round(60*Math.pow(1.3,L-1)));
-  const pool=POOL_AT.filter(p=>p[0]<=L).map(p=>p[1]);
+  const pool=poolAt(L);
   return {L,mapId,count,pool,style:STYLE_CYCLE[(L-1)%7],ulv:Math.min(5,Math.floor((L-1)/3)),seed:1000+L*7919,
     name:BATTLE_NAMES[mapId]+(cycle>1?' '+(ROMAN[cycle]||cycle):''), reward:Math.round(80+L*45*Math.pow(1.18,L))};
 }
@@ -740,12 +749,12 @@ let N=0, tick=0, simTime=0;
 const F=()=>new Float32Array(MAXU);
 const PX=F(),PZ=F(),OX=F(),OZ=F(),PY=F(),VX=F(),VZ=F(),FA=F(),HP=F(),MO=F(),CD=F(),AT=F(),FL=F(),DE=F(),BA=F(),BS=F(),CH=F(),SX=F(),SZ=F(),SA=F(),STN=F(),STK=F(),STU=F();
 const TM=new Uint8Array(MAXU), TY=new Uint8Array(MAXU), SS=new Uint8Array(MAXU), FG=new Uint8Array(MAXU);
-const GR=new Int32Array(MAXU), TG=new Int32Array(MAXU), KL=new Uint16Array(MAXU);
-const ALLARR=[PX,PZ,OX,OZ,PY,VX,VZ,FA,HP,MO,CD,AT,FL,DE,BA,BS,CH,SX,SZ,SA,STN,STK,STU,TM,TY,SS,FG,GR,TG,KL];
+const GR=new Int32Array(MAXU), TG=new Int32Array(MAXU), KL=new Uint16Array(MAXU), RC=new Uint8Array(MAXU);   // RC: times routed
+const ALLARR=[PX,PZ,OX,OZ,PY,VX,VZ,FA,HP,MO,CD,AT,FL,DE,BA,BS,CH,SX,SZ,SA,STN,STK,STU,TM,TY,SS,FG,GR,TG,KL,RC];
 let STT=[computeStats(lvZero,{}),computeStats(lvZero,{})];
 let G=[];
 
-const B={rules:{morale:true,rain:false}, start:[0,0], dead:[0,0], esc:[0,0], active:[0,0], fleeing:[0,0], startT:[new Int32Array(NT),new Int32Array(NT)], deadT:[new Int32Array(NT),new Int32Array(NT)],
+const B={rules:{morale:true,rain:false}, start:[0,0], dead:[0,0], esc:[0,0], active:[0,0], fleeing:[0,0], startT:[new Int32Array(NT),new Int32Array(NT)], deadT:[new Int32Array(NT),new Int32Array(NT)], escT:[new Int32Array(NT),new Int32Array(NT)], broken:[false,false],
   combat:[0,0], hunt:false, noRout:false, noHunt:false, phaseT:0, shieldBlock:[.5,.5], adjBlock:[.3,.3], shieldArm:[3,3], armyLoss:[0,0], hasMelee:[1,1], onKill:null, onEscape:null, tcx:[0,0], tcz:[0,0]};
 const TEAMCOL=[[0.24,0.45,0.90],[0.86,0.27,0.22]];
 
@@ -878,7 +887,7 @@ function initUnit(i,team,type,x,z,a,gi,sx,sz,sa){
   const st=STT[team][type];
   PX[i]=OX[i]=x; PZ[i]=OZ[i]=z; PY[i]=heightAt(x,z); VX[i]=VZ[i]=0; FA[i]=a; HP[i]=st.hp; MO[i]=st.morale;
   CD[i]=st.isR? rnd()*0.25 : rnd()*0.6; AT[i]=0; FL[i]=0; DE[i]=0; BA[i]=0; BS[i]=0; CH[i]=0; SX[i]=sx; SZ[i]=sz; SA[i]=sa; STN[i]=0; STK[i]=0; STU[i]=0;
-  TM[i]=team; TY[i]=type; SS[i]=1; FG[i]=0; GR[i]=gi; TG[i]=-1; KL[i]=0;
+  TM[i]=team; TY[i]=type; SS[i]=1; FG[i]=0; GR[i]=gi; TG[i]=-1; KL[i]=0; RC[i]=0;
 }
 function makeBattleGroup(dg){
   let rad=2; for(let k=0;k<dg.slots.length;k+=3) rad=Math.max(rad,Math.hypot(dg.slots[k],dg.slots[k+1]));
@@ -908,7 +917,7 @@ function assignFlankSides(){
 function resetBattle(){
   N=0; G=[]; tick=0; simTime=0;
   B.start=[0,0]; B.dead=[0,0]; B.esc=[0,0]; B.active=[0,0]; B.fleeing=[0,0]; B.armyLoss=[0,0];
-  B.startT=[new Int32Array(NT),new Int32Array(NT)]; B.deadT=[new Int32Array(NT),new Int32Array(NT)]; B.lastKill=0; B.phaseT=0; B.noHunt=false;
+  B.startT=[new Int32Array(NT),new Int32Array(NT)]; B.deadT=[new Int32Array(NT),new Int32Array(NT)]; B.escT=[new Int32Array(NT),new Int32Array(NT)]; B.broken=[false,false]; B.lastKill=0; B.phaseT=0; B.noHunt=false;
   clearProjectiles();
 }
 function setAbilities(team,ab){ B.shieldBlock[team]=ab.shieldwall?.7:.5; B.adjBlock[team]=ab.shieldwall?.45:.3; B.shieldArm[team]=ab.shieldwall?5:3; }
@@ -929,7 +938,7 @@ function damage(t,dmg,src){
   if(SS[t]!==1&&SS[t]!==2) return;
   HP[t]-=dmg; FL[t]=1;
   const b=STT[TM[t]][TY[t]];
-  if(B.rules.morale && !b.noFlee) MO[t]-=dmg/b.hp*14;
+  if(B.rules.morale && !b.noFlee) MO[t]-=dmg/b.hp*10;
   if(HP[t]<=0) kill(t,src);
 }
 function kill(t,src){
@@ -944,7 +953,7 @@ function kill(t,src){
   if(B.rules.morale){
     const x=PX[t], z=PZ[t];
     if(UNITS[ty].id==='cmdr') forEachIn(tm,x,z,15,j=>{ MO[j]-=25; });
-    else forEachIn(tm,x,z,4,j=>{ MO[j]-=3; });
+    else forEachIn(tm,x,z,4,j=>{ MO[j]-=2; });
   }
 }
 function knock(t,kx,kz){
@@ -974,7 +983,7 @@ function meleeHit(i,t,mult){
     CH[i]= a.id==='lancer'?0.25:0;
     dustPuff(PX[t],PY[t],PZ[t],2);
   }
-  if(SS[t]===2) dmg*=1.3;
+  if(SS[t]===2) dmg*=1.6;   // a routed soldier does not defend himself
   let arm=b.armor+(BS[t]>0?B.shieldArm[TM[t]]:0); arm*=1-a.pen;
   dmg*=12/(12+Math.max(0,arm));
   AT[i]=1; sfx(EV_HIT,PX[t],PY[t],PZ[t]);
@@ -1110,10 +1119,10 @@ function simTick(){
       if(((tick+i)&3)===0) TG[i]=nearestIn(tm^1,x,z,11,false);
       const e=TG[i];
       if(e>=0 && SS[e]===1){ const ex=x-PX[e], ez=z-PZ[e], d=Math.hypot(ex,ez)||1; if(d<11){ ax+=ex/d*1.4; az+=ez/d*1.4; enemyNear=true; } }
-      const al=Math.hypot(ax,az)||1; dvx=ax/al*spd*1.1; dvz=az/al*spd*1.1;
-      MO[i]+=DT*(enemyNear?0.3:(BA[i]>0?8:3));
-      if(!enemyNear && MO[i]>st.morale*0.45){ SS[i]=1; TG[i]=-1; }
-      if((tm===0&&x<X0+1.6)||(tm===1&&x>X1-1.6)){ SS[i]=3; B.esc[tm]++; if(B.onEscape) B.onEscape(i); continue; }
+      const al=Math.hypot(ax,az)||1; dvx=ax/al*spd*0.9; dvz=az/al*spd*0.9;
+      // routed troops only recover beside a commander, and a soldier who has broken twice never returns
+      if(BA[i]>0 && RC[i]<2){ MO[i]+=DT*(enemyNear?0.5:8); if(!enemyNear && MO[i]>st.morale*0.45){ SS[i]=1; TG[i]=-1; } }
+      if((tm===0&&x<X0+1.6)||(tm===1&&x>X1-1.6)){ SS[i]=3; B.esc[tm]++; B.escT[tm][ty]++; if(B.onEscape) B.onEscape(i); continue; }
       B.fleeing[tm]++;
     } else {
       if(tgt>=0 && SS[tgt]!==1 && SS[tgt]!==2) tgt=-1;
@@ -1189,9 +1198,9 @@ function simTick(){
       if(morale && !st.noFlee){
         if(BA[i]>0) MO[i]=Math.min(st.morale,MO[i]+DT*4);
         else if(tgt<0) MO[i]=Math.min(st.morale,MO[i]+DT);
-        if(g.alive<g.n0*0.4) MO[i]-=DT*1.5;
+        if(g.alive<g.n0*0.3) MO[i]-=DT*1.5;
         if(B.armyLoss[tm]>0.6) MO[i]-=DT;
-        if(MO[i]<st.morale*0.12){ SS[i]=2; TG[i]=-1; }
+        if(MO[i]<st.morale*0.12){ SS[i]=2; TG[i]=-1; RC[i]++; }
       }
       B.active[tm]++;
     }
@@ -1220,10 +1229,12 @@ function simTick(){
   for(let t=0;t<2;t++){
     B.armyLoss[t]= B.start[t]? 1-(B.active[t]+B.fleeing[t])/B.start[t] : 0;
     // crews and medics abandon the field once no fighting troops remain
-    if(B.combat[t]===0 && B.active[t]>0 && !B.noRout){ for(let i=0;i<N;i++) if(TM[i]===t && SS[i]===1){ SS[i]=2; TG[i]=-1; MO[i]=0; } }
+    if(B.combat[t]===0 && B.active[t]>0 && !B.noRout) breakArmy(t);
   }
 }
 
+// the whole army routes for good: no rallies, the battle ends once the field clears of fighters
+function breakArmy(t){ B.broken[t]=true; for(let i=0;i<N;i++) if(TM[i]===t && SS[i]===1){ SS[i]=2; TG[i]=-1; MO[i]=0; RC[i]=9; } }
 function separation(){
   SEPX.fill(0,0,N); SEPZ.fill(0,0,N);
   // walk units in cell order; neighbours come from the cell-sorted copies built in buildGrids
@@ -1320,7 +1331,7 @@ function projHit(p,j){
   let dmg=PRD[p]*(0.85+0.3*rnd());
   let arm=b.armor+(BS[j]>0?B.shieldArm[TM[j]]:0); arm*=1-PRN[p];
   dmg*=12/(12+Math.max(0,arm));
-  if(SS[j]===2) dmg*=1.2;
+  if(SS[j]===2) dmg*=1.5;
   if(B.rules.morale && !b.noFlee) MO[j]-=2;
   sfx(EV_STRUCK,PX[j],PY[j],PZ[j]);
   damage(j,dmg,PRO[p]);
@@ -2274,7 +2285,7 @@ const mmss=t=>{ t=Math.max(0,Math.floor(t)); return Math.floor(t/60)+':'+String(
 const SAVE_KEY='massive-armies-v1';
 function defaultProg(){ return {gold:150,roster:{sword:60,archer:30},tech:{sword:true,archer:true},upg:{},level:1,won:{},layout:null,layoutSurv:null,saves:[],best:{endless:0,survival:0}}; }
 let PROG=defaultProg();
-function loadProg(data){ let p=data&&data.prog; if(!p){ try{ const s=localStorage.getItem(SAVE_KEY); if(s) p=JSON.parse(s); }catch(e){} } if(p&&typeof p==='object') PROG=Object.assign(defaultProg(),p); }
+function loadProg(data){ let p=data&&data.prog; if(!p){ try{ const s=localStorage.getItem(SAVE_KEY); if(s) p=JSON.parse(s); }catch(e){} } if(p&&typeof p==='object') PROG=Object.assign(defaultProg(),p); normalizeRoster(); }
 function saveProg(){ PROG.t=Date.now(); try{ localStorage.setItem(SAVE_KEY,JSON.stringify(PROG)); }catch(e){} cloudQueue(); }
 
 /* ---------- cloud save: core progress follows a signed-in player across devices ---------- */
@@ -2301,7 +2312,7 @@ async function initCloud(){
     CLOUD.ref=ref; CLOUD.on=true;
     let remote=null; if(snap.exists){ try{ remote=JSON.parse(snap.data().core); }catch(e){} }
     if(remote && (remote.t||0)>(PROG.t||0)){
-      Object.assign(PROG,remote); try{ localStorage.setItem(SAVE_KEY,JSON.stringify(PROG)); }catch(e){}
+      Object.assign(PROG,remote); normalizeRoster(); try{ localStorage.setItem(SAVE_KEY,JSON.stringify(PROG)); }catch(e){}
       afterProgressChange(); if(!$('#modal').hidden && $('#sheet').querySelector('.welcome-mark')) showWelcome();
       toast('Progress restored from your account');
     } else if(PROG.t){ cloudQueue(); }
@@ -2310,6 +2321,13 @@ async function initCloud(){
 const capOf=()=>{ let c=BASE_CAP; for(const t of TECH) if(t.cap&&PROG.tech[t.id]) c=Math.max(c,t.cap); return c; };
 const upgLv=(c,s)=>PROG.upg[c+'_'+s]||0;
 const owned=id=>!!PROG.tech[id];
+// upgrade lines: a type is retired once the next tier of its line has been researched
+const superseded=id=>!!(NEXT_TIER[id]&&PROG.tech[NEXT_TIER[id]]);
+const currentTier=id=>{ while(NEXT_TIER[id]&&PROG.tech[NEXT_TIER[id]]) id=NEXT_TIER[id]; return id; };
+const fieldable=id=>owned(id)&&!superseded(id);
+// move soldiers of retired tiers into the newest tier of their line (also upgrades older saves)
+function normalizeRoster(){ for(const line of LINES){ let top=null; for(const id of line) if(PROG.tech[id]) top=id; if(!top) continue;
+  for(const id of line){ if(id===top) break; const n=PROG.roster[id]||0; if(n){ PROG.roster[top]=(PROG.roster[top]||0)+n; PROG.roster[id]=0; } } } }
 const rosterTotal=()=>UNITS.reduce((a,u)=>a+(PROG.roster[u.id]||0),0);
 function enemyAbilities(lv){ const a={}; if(lv>=1) a.firearrows=1; if(lv>=2) a.shieldwall=1; if(lv>=3) a.thunder=1; if(lv>=4){a.hymn=1;a.surgery=1;} if(lv>=5) a.shells=1; return a; }
 const playerStats=()=>GAME.limited?computeStats(upgLv,PROG.tech):computeStats(lvZero,{});
@@ -2397,20 +2415,20 @@ function onTerrainChanged(){
 function markTerrainDirty(){ GAME.terrainDirty=true; }
 
 /* ---------- modes ---------- */
-function availableTypes(){ return UNITS.map((u,i)=>i).filter(i=>!GAME.limited||owned(UNITS[i].id)); }
+function availableTypes(){ return UNITS.map((u,i)=>i).filter(i=>!GAME.limited||fieldable(UNITS[i].id)); }
 function serializeGroups(gs){ return gs.map(g=>({type:UNITS[g.type].id,order:g.order,cx:+g.cx.toFixed(2),cz:+g.cz.toFixed(2),a:+g.a.toFixed(3),sp:+(g.sp||UNITS[g.type].sp).toFixed(3),slots:g.slots.map(v=>+v.toFixed(2))})); }
-function deserializeGroups(arr,team){ const out=[]; for(const g of (arr||[])){ const ty=UID[g.type]; if(ty===undefined||!Array.isArray(g.slots)) continue; out.push({team,type:ty,order:ORDER_IDS.includes(g.order)?g.order:defaultOrder(ty),cx:+g.cx||0,cz:+g.cz||0,a:+g.a||0,sp:+g.sp||UNITS[ty].sp,slots:g.slots.map(Number)}); } return out; }
+function deserializeGroups(arr,team){ const out=[]; for(const g of (arr||[])){ const ty=UID[GAME.limited&&UID[g.type]!==undefined?currentTier(g.type):g.type]; if(ty===undefined||!Array.isArray(g.slots)) continue; out.push({team,type:ty,order:ORDER_IDS.includes(g.order)?g.order:defaultOrder(ty),cx:+g.cx||0,cz:+g.cz||0,a:+g.a||0,sp:+g.sp||UNITS[ty].sp,slots:g.slots.map(Number)}); } return out; }
 function inZone(x,z,team){ const zn=GAME.zones[team]; if(!zn) return x>X0+2&&x<X1-2&&z>Z0+2&&z<Z1-2; return x>=zn[0]&&x<=zn[1]&&z>Z0+2&&z<Z1-2; }
 function validateGroups(gs,T){ for(const g of gs){ const keep=[]; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(passAtT(T,wx,wz)&&inZone(wx,wz,g.team)) keep.push(g.slots[k],g.slots[k+1],g.slots[k+2]); } g.slots=keep; } return gs.filter(g=>g.slots.length); }
 function trimToRoster(gs){
   const left={}; UNITS.forEach(u=>left[u.id]=PROG.roster[u.id]||0); let cap=capOf();
-  for(const g of gs){ const id=UNITS[g.type].id; if(!owned(id)){ g.slots=[]; continue; } const n=Math.min(g.slots.length/3,left[id],cap); g.slots.length=n*3; left[id]-=n; cap-=n; }
+  for(const g of gs){ const id=UNITS[g.type].id; if(!fieldable(id)){ g.slots=[]; continue; } const n=Math.min(g.slots.length/3,left[id],cap); g.slots.length=n*3; left[id]-=n; cap-=n; }
   return gs.filter(g=>g.slots.length);
 }
 function autoCounts(){
   const counts=new Array(NT).fill(0); const cap=capOf(); const tot=rosterTotal();
   const f=tot>cap?cap/tot:1;
-  UNITS.forEach((u,i)=>{ if(owned(u.id)) counts[i]=Math.floor((PROG.roster[u.id]||0)*f); });
+  UNITS.forEach((u,i)=>{ if(fieldable(u.id)) counts[i]=Math.floor((PROG.roster[u.id]||0)*f); });
   return counts;
 }
 function playerLayout(T,saved,opt){
@@ -2513,28 +2531,32 @@ function onEscape(i){ if(GAME.limited && TM[i]===1) GAME.gold+=UNITS[TY[i]].cost
 function spawnEndlessWave(){
   const w=GAME.wave; if(!GAME.base0) GAME.base0=B.start[0]; const base=Math.max(40,Math.round(GAME.base0*0.5));
   const count=Math.min(30000,Math.round(base*Math.pow(1.25,w-1)));
-  const L=Math.min(20,Math.floor(1+w*1.6)), pool=POOL_AT.filter(p=>p[0]<=L).map(p=>p[1]);
+  const L=Math.min(20,Math.floor(1+w*1.6)), pool=poolAt(L);
   const lv=Math.min(5,Math.floor((w-1)/3)); STT[1]=enemyStats(lv); setAbilities(1,enemyAbilities(lv));
-  addGroupsToSim(validateGroupsAny(genArmy(1,count,pool,STYLE_CYCLE[w%7],GAME.seed+w*101,TER,{back:70})));
+  const wg=validateGroupsAny(genArmy(1,count,pool,STYLE_CYCLE[w%7],GAME.seed+w*101,TER,{back:70})); GAME.waveN=wg.reduce((a,g)=>a+g.slots.length/3,0); B.broken[1]=false;
+  addGroupsToSim(wg);
   B.phaseT=simTime; B.lastKill=simTime;
   banner('Wave '+w,'var(--red)',1500); if(w>1) audWave();
 }
 function spawnSurvivalBatch(){
   // spawn rate scales with the size of the defending army and climbs steadily over time
-  const t=GAME.survT, s0=Math.max(150,B.start[0]), count=Math.max(12,Math.round(s0*(0.0035+t*0.00004)*8)), L=Math.min(20,Math.floor(1+t/30)), pool=POOL_AT.filter(p=>p[0]<=L).map(p=>p[1]);
+  const t=GAME.survT, s0=Math.max(150,B.start[0]), count=Math.max(12,Math.round(s0*(0.0035+t*0.00004)*8)), L=Math.min(20,Math.floor(1+t/30)), pool=poolAt(L);
   const lv=Math.min(5,Math.floor(t/100)); STT[1]=enemyStats(lv); setAbilities(1,enemyAbilities(lv));
   const gs=genArmy(1,count,pool,STYLE_CYCLE[(tick/7|0)%7],GAME.seed+tick,TER,{back:66});
   const dz=(rnd()-0.5)*90*MS; gs.forEach(g=>{ g.cz=clamp(g.cz+dz,-70*MS,70*MS); g.order='advance'; });
   addGroupsToSim(validateGroupsAny(gs));
 }
 function validateGroupsAny(gs){ for(const g of gs){ const keep=[]; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(passAt(wx,wz)) keep.push(g.slots[k],g.slots[k+1],g.slots[k+2]); } g.slots=keep; } return gs.filter(g=>g.slots.length); }
+// an army reduced to a tenth of its strength and heavily outnumbered breaks and flees for good
+function checkBreak(t,start){ if(!B.rules.morale||B.broken[t]) return; const a=B.active[t]; if(a>0 && a<=Math.max(2,start*0.1) && a<B.active[t^1]*0.25) breakArmy(t); }
 function afterTick(){
   if(stakesChanged){ stakesChanged=false; markTerrainDirty(); }
   if(GAME.ended) return;
   if(GAME.mode==='endless'){
+    checkBreak(0,B.start[0]); checkBreak(1,GAME.waveN||B.start[1]);
     if(B.active[0]===0){ endBattle(1); return; }
     if(B.active[1]===0 && GAME.waveTimer<0){ GAME.gold+=GAME.wave*40; GAME.waveTimer=5; GAME.wave++;
-      for(let i=0;i<N;i++) if(TM[i]===0&&(SS[i]===1||SS[i]===2)){ const st=STT[0][TY[i]]; HP[i]=st.hp; MO[i]=st.morale; SS[i]=1; TG[i]=-1; }
+      for(let i=0;i<N;i++) if(TM[i]===0&&(SS[i]===1||SS[i]===2)){ const st=STT[0][TY[i]]; HP[i]=st.hp; MO[i]=st.morale; SS[i]=1; TG[i]=-1; RC[i]=0; }
       const counts=new Array(NT).fill(0); let nr=0;
       for(let t=0;t<NT;t++){ counts[t]=Math.floor((B.deadT[0][t]-(GAME.deadAt[t]||0))*0.35); nr+=counts[t]; }
       GAME.deadAt=Array.from(B.deadT[0]);
@@ -2544,11 +2566,13 @@ function afterTick(){
   } else if(GAME.mode==='survival'){
     GAME.survT+=DT; GAME.spawnT-=DT;
     if(GAME.spawnT<=0){ spawnSurvivalBatch(); GAME.spawnT=8; }
+    checkBreak(0,B.start[0]);
     if(B.active[0]===0) endBattle(1);
   } else {
-    if(B.active[0]===0||B.active[1]===0||simTime>600){
+    checkBreak(0,B.start[0]); checkBreak(1,B.start[1]);
+    if(B.active[0]===0||B.active[1]===0||simTime>420){
       let w=-1; if(B.active[0]>0&&B.active[1]===0) w=0; else if(B.active[1]>0&&B.active[0]===0) w=1;
-      else if(simTime>600){ const v=t=>{ let s=0; for(let i=0;i<N;i++) if(TM[i]===t&&SS[i]===1) s+=UNITS[TY[i]].cost; return s; }; const a=v(0), b=v(1); w=a>b?0:b>a?1:-1; }
+      else if(simTime>420){ const v=t=>{ let s=0; for(let i=0;i<N;i++) if(TM[i]===t&&SS[i]===1) s+=UNITS[TY[i]].cost; return s; }; const a=v(0), b=v(1); w=a>b?0:b>a?1:-1; }
       endBattle(w);
     }
   }
@@ -2577,8 +2601,13 @@ function settleRewards(){
     }
   } else if(GAME.mode==='endless'){ if(GAME.wave-1>PROG.best.endless) PROG.best.endless=GAME.wave-1; }
   else if(GAME.mode==='survival'){ const b=Math.floor(GAME.survT/10)*15; lines.push(['Time held',b]); total+=b; if(GAME.survT>PROG.best.survival) PROG.best.survival=Math.floor(GAME.survT); }
+  // soldiers who fled off the field have deserted: they leave the roster for good
+  let deserted=0;
+  // soldiers still fleeing when the battle ends never come back either
+  const fled=new Int32Array(NT); for(let i=0;i<N;i++) if(TM[i]===0&&SS[i]===2) fled[TY[i]]++;
+  if(GAME.limited){ for(let ty=0;ty<NT;ty++){ const n=B.escT[0][ty]+fled[ty]; if(!n) continue; const id=UNITS[ty].id; const had=PROG.roster[id]||0; const lost=Math.min(had,n); PROG.roster[id]=had-lost; deserted+=lost; } }
   PROG.gold+=total; saveProg();
-  GAME.settled={lines,total}; return GAME.settled;
+  GAME.settled={lines,total,deserted}; return GAME.settled;
 }
 
 /* ---------- deploy tools ---------- */
@@ -2789,6 +2818,7 @@ function buildDeployDock(){
   $('#btnAuto').textContent='Auto';
   $('#sideSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on',+b.dataset.side===D.team));
   $('#btnTerrain').classList.toggle('on',D.terrain); $('#btnTerrain').textContent=D.terrain?'Back to troops':'Map editor';
+  const av=availableTypes(); if(!av.includes(D.type)){ const up=UID[currentTier(UNITS[D.type].id)]; D.type=av.includes(up)?up:(av[0]||0); }
   const chips=$('#chips'); chips.innerHTML='';
   if(D.terrain){
     TERRAIN_TOOLS.forEach(([id,name,col])=>{ const b=document.createElement('button'); b.className='chip'+(D.ttool===id?' on':''); b.innerHTML=`<span class="swatch" style="background:${col}"></span><span class="nm">${name}</span>`; b.onclick=()=>{ D.ttool=id; buildDeployDock(); }; chips.appendChild(b); });
@@ -3070,7 +3100,7 @@ function showBattles(tab){
     const top=PROG.level; const rows=[];
     for(let L=1;L<=top+1;L++){ const cl=campaignLevel(L), locked=L>top, won=PROG.won[L];
       rows.push(`<div class="lrow${locked?' locked':''}"><div class="no">${L}</div><div style="min-width:0"><div class="t">${cl.name}</div><div class="m">${MAPS.find(m=>m.id===cl.mapId).name} · ${fmt(cl.count)} enemies · ${STYLES[cl.style].name.toLowerCase()} · reward ${fmt(cl.reward)}${won?' · <span class="won">won</span>':''}</div></div>${locked?'<span class="hint">Win battle '+(L-1)+'</span>':`<button class="btn sm${L===top?' primary':''}" data-camp="${L}">${won?'Replay':'Deploy'}</button>`}</div>`); }
-    body=`<p class="lede">Your army: <b>${fmt(rosterTotal())}</b> soldiers in the roster, up to <b>${fmt(capOf())}</b> on the field at once. Enemies grow about 30% larger each battle. Losses heal between battles.</p><div class="list" id="campList">${rows.reverse().join('')}</div>`;
+    body=`<p class="lede">Your army: <b>${fmt(rosterTotal())}</b> soldiers in the roster, up to <b>${fmt(capOf())}</b> on the field at once. Enemies grow about 30% larger each battle. The fallen recover between battles, but soldiers who flee the field desert for good.</p><div class="list" id="campList">${rows.reverse().join('')}</div>`;
   } else if(tab==='endless'){
     body=`<p class="lede">Deploy your roster and hold out against waves that grow 25% larger every round. Between waves your survivors heal fully and a third of the fallen return as reinforcements. Each broken wave pays a bonus. Best: <b>${PROG.best.endless}</b> waves.</p>
     <div class="grid2"><label class="field">Battlefield<select id="eMap">${mapOptions('grassland',['blank'])}</select></label></div><div class="actions"><button class="btn primary" id="eGo">Deploy</button></div>`;
@@ -3116,7 +3146,7 @@ function showCouncil(tab){
   const ps=computeStats(upgLv,PROG.tech);
   let body='';
   if(tab==='recruit'){
-    const rows=UNITS.map((u,i)=>{ if(!owned(u.id)) return ''; const s=ps[i], own=PROG.roster[u.id]||0;
+    const rows=UNITS.map((u,i)=>{ if(!fieldable(u.id)) return ''; const s=ps[i], own=PROG.roster[u.id]||0;
       const b=n=>{ const c=u.cost*n; return `<button class="btn sm" data-buy="${u.id}" data-n="${n}"${PROG.gold<c?' disabled':''}>+${n} · ${fmt(c)}</button>`; };
       const big=capOf()>=2000?b(1000):'';
       return `<div class="rec">${unitIcon(i)}<div style="min-width:0"><div class="t">${u.name}<small>${u.role}</small></div><div class="st">HP ${Math.round(s.hp)} · ARM ${s.armor.toFixed(1).replace('.0','')} · DMG ${Math.round(s.dmg)} · RNG ${u.isR?Math.round(s.range):s.range.toFixed(1)} · SPD ${s.speed.toFixed(1)} · ${u.cost}g each</div></div><div><div class="own"><b>${fmt(own)}</b> owned</div><div class="buy">${u.cls==='sie'?b(1)+b(5):b(10)+b(100)}${big}</div></div></div>`; }).join('');
@@ -3124,11 +3154,13 @@ function showCouncil(tab){
   } else if(tab==='tech'){
     const cols=BRANCHES.map((bn,b)=>{ const nodes=TECH.filter(t=>t.b===b).map(t=>{ const own=owned(t.id), avail=!own&&t.req.every(owned);
       const u=t.unit?UNITS[UID[t.unit]]:null;
-      const desc=t.desc||(u?u.desc:t.cap?`Field up to ${fmt(t.cap)} soldiers at once.`:'');
+      const prev=t.unit&&PREV_TIER[t.unit], next=t.unit&&NEXT_TIER[t.unit];
+      const desc=t.desc||(u?(prev?`<b class="up">Upgrades your ${UNITS[UID[prev]].name.toLowerCase()}.</b> `:'')+u.desc:t.cap?`Field up to ${fmt(t.cap)} soldiers at once.`:'');
+      const doneTxt= t.unit&&superseded(t.unit) ? `Upgraded to ${UNITS[UID[NEXT_TIER[t.unit]]].name}` : 'Researched';
       const req=t.req.filter(r=>!owned(r)).map(r=>TECHBY[r].name);
-      return `<div class="node ${own?'owned':avail?'avail':'locked'}"><div class="nt">${u?unitIcon(UID[t.unit]):''}${t.name}</div><div class="nd">${desc}</div>${own?'<div class="ok">Researched</div>':avail?`<button class="btn sm primary" data-tech="${t.id}"${PROG.gold<t.cost?' disabled':''}>Research · ${fmt(t.cost)}</button>`:`<div class="req">Needs ${req.join(' and ')} · ${fmt(t.cost)}</div>`}</div>`; }).join('');
+      return `<div class="node ${own?'owned':avail?'avail':'locked'}"><div class="nt">${u?unitIcon(UID[t.unit]):''}${t.name}</div><div class="nd">${desc}</div>${own?`<div class="ok">${doneTxt}</div>`:avail?`<button class="btn sm primary" data-tech="${t.id}"${PROG.gold<t.cost?' disabled':''}>Research · ${fmt(t.cost)}</button>`:`<div class="req">Needs ${req.join(' and ')} · ${fmt(t.cost)}</div>`}</div>`; }).join('');
       return `<div class="branch"><h5>${bn}</h5>${nodes}</div>`; }).join('');
-    body=`<p class="lede">Unlock unit classes, battlefield abilities and larger armies. Scroll sideways to see every branch.</p><div class="tree">${cols}</div>`;
+    body=`<p class="lede">Unlock unit classes, battlefield abilities and larger armies. Researching the next unit in a line, like Swordsmen to Heavy Infantry, re-equips every soldier of the old type, so your army keeps a short list of units. Scroll sideways to see every branch.</p><div class="tree">${cols}</div>`;
   } else {
     const blocks=UPG_CATS.map(c=>`<div class="ucat"><h5>${c.name}</h5>${UPG_STATS.map(s=>{ const lv=upgLv(c.id,s.id), cost=upgCost(c.id,s.id,lv);
       return `<div class="urow"><div class="t">${s.name}<small>${s.fx} per level</small></div><div class="pips" aria-label="Level ${lv} of ${UPG_MAX}">${Array.from({length:UPG_MAX},(_,k)=>`<i class="${k<lv?'f':''}"></i>`).join('')}</div>${lv>=UPG_MAX?'<span class="ok hudtext" style="color:var(--good)">MAX</span>':`<button class="btn sm" data-upg="${c.id}_${s.id}"${PROG.gold<cost?' disabled':''}>${fmt(cost)}</button>`}</div>`; }).join('')}</div>`).join('');
@@ -3139,12 +3171,16 @@ function showCouncil(tab){
     $('#cX').onclick=closeModal;
     s.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>showCouncil(b.dataset.tab));
     s.querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>{ const id=b.dataset.buy, n=+b.dataset.n, c=UNITS[UID[id]].cost*n; if(PROG.gold<c) return; PROG.gold-=c; PROG.roster[id]=(PROG.roster[id]||0)+n; saveProg(); keepScroll(()=>showCouncil('recruit')); afterProgressChange(); });
-    s.querySelectorAll('[data-tech]').forEach(b=>b.onclick=()=>{ const t=TECHBY[b.dataset.tech]; if(PROG.gold<t.cost) return; PROG.gold-=t.cost; PROG.tech[t.id]=true; if(t.unit && !PROG.roster[t.unit]) PROG.roster[t.unit]=UNITS[UID[t.unit]].cls==='sie'?2:UNITS[UID[t.unit]].cls==='sup'?3:10; saveProg(); toast(`${t.name} researched`+(t.unit?'. A few recruits have joined.':'')); keepScroll(()=>showCouncil('tech')); afterProgressChange(); });
+    s.querySelectorAll('[data-tech]').forEach(b=>b.onclick=()=>{ const t=TECHBY[b.dataset.tech]; if(PROG.gold<t.cost) return; PROG.gold-=t.cost; PROG.tech[t.id]=true; let msg=`${t.name} researched`;
+      if(t.unit){ const prev=PREV_TIER[t.unit], conv=prev?(PROG.roster[prev]||0):0;
+        if(conv){ PROG.roster[t.unit]=(PROG.roster[t.unit]||0)+conv; PROG.roster[prev]=0; msg=`Your ${fmt(conv)} ${UNITS[UID[prev]].name.toLowerCase()} are now ${t.name.toLowerCase()}`; }
+        else if(!PROG.roster[t.unit]){ PROG.roster[t.unit]=UNITS[UID[t.unit]].cls==='sie'?2:UNITS[UID[t.unit]].cls==='sup'?3:10; msg+='. A few recruits have joined.'; } }
+      saveProg(); toast(msg,3000); keepScroll(()=>showCouncil('tech')); afterProgressChange(); });
     s.querySelectorAll('[data-upg]').forEach(b=>b.onclick=()=>{ const [c,st]=b.dataset.upg.split('_'), lv=upgLv(c,st), cost=upgCost(c,st,lv); if(PROG.gold<cost||lv>=UPG_MAX) return; PROG.gold-=cost; PROG.upg[c+'_'+st]=lv+1; saveProg(); keepScroll(()=>showCouncil('upgrades')); afterProgressChange(); });
   });
 }
 function keepScroll(fn){ const s=$('#sheet'), y=s.scrollTop, tree=s.querySelector('.tree'), tx=tree?tree.scrollLeft:0; fn(); s.scrollTop=y; const t2=s.querySelector('.tree'); if(t2) t2.scrollLeft=tx; }
-function afterProgressChange(){ updateHud(true); if(GAME.phase==='deploy'&&GAME.limited){ STT[0]=playerStats(); buildDeployDock(); } }
+function afterProgressChange(){ updateHud(true); if(GAME.phase==='deploy'&&GAME.limited){ STT[0]=playerStats(); for(const g of D.groups) if(g.team===0) g.type=UID[currentTier(UNITS[g.type].id)]; syncDeploy(); buildDeployDock(); } }
 function showResults(){
   GAME.phase='result';
   const r=settleRewards(), won=GAME.winner===0;
@@ -3155,7 +3191,7 @@ function showResults(){
   else { title=won?'Victory':GAME.winner===1?'Defeat':'Stalemate'; color=won?'var(--brass-hi)':GAME.winner===1?'var(--red)':'var(--fg)'; sub=GAME.mode==='campaign'?`Battle ${GAME.level} · ${campaignLevel(GAME.level).name}`:GAME.title; }
   let rows='';
   for(let ty=0;ty<NT;ty++){ const s0=B.startT[0][ty], s1=B.startT[1][ty]; if(!s0&&!s1) continue; rows+=`<tr><td class="nm"><span style="color:var(--muted)">${unitIcon(ty)}</span>${UNITS[ty].name}</td><td>${s0?fmt(s0):'·'}</td><td style="color:var(--blue)">${s0?fmt(B.deadT[0][ty]):''}</td><td>${s1?fmt(s1):'·'}</td><td style="color:var(--red)">${s1?fmt(B.deadT[1][ty]):''}</td></tr>`; }
-  const goldHtml=GAME.limited?`<div class="goldlines">${r.lines.map(([l,v])=>`<div><span>${l}</span><b>+${fmt(v)}</b></div>`).join('')}<div class="total"><span>Gold earned</span><b>+${fmt(r.total)}</b></div></div>`:'';
+  const goldHtml=GAME.limited?`<div class="goldlines">${r.lines.map(([l,v])=>`<div><span>${l}</span><b>+${fmt(v)}</b></div>`).join('')}<div class="total"><span>Gold earned</span><b>+${fmt(r.total)}</b></div></div>${r.deserted?`<div class="desert">${fmt(r.deserted)} soldier${r.deserted===1?'':'s'} fled the field and deserted. They have left your roster.</div>`:''}`:'';
   let btns='';
   if(GAME.mode==='campaign') btns=won?`<button class="btn" id="rCouncil">Council</button><button class="btn" id="rRetry">Replay</button><button class="btn primary" id="rNext">Battle ${GAME.level+1}</button>`:`<button class="btn" id="rBattles">Battles</button><button class="btn" id="rCouncil">Council</button><button class="btn primary" id="rRetry">Try again</button>`;
   else if(GAME.mode==='endless'||GAME.mode==='survival') btns=`<button class="btn" id="rBattles">Battles</button><button class="btn" id="rCouncil">Council</button><button class="btn primary" id="rAgain">Go again</button>`;
