@@ -17,7 +17,7 @@ const ALLARR=[PX,PZ,OX,OZ,PY,VX,VZ,FA,HP,MO,CD,AT,FL,DE,BA,BS,CH,SX,SZ,SA,STN,ST
 let STT=[computeStats(lvZero,{}),computeStats(lvZero,{})];
 let G=[];
 
-const B={rules:{morale:true,rain:false}, start:[0,0], dead:[0,0], esc:[0,0], active:[0,0], fleeing:[0,0], startT:[new Int32Array(NT),new Int32Array(NT)], deadT:[new Int32Array(NT),new Int32Array(NT)], escT:[new Int32Array(NT),new Int32Array(NT)], broken:[false,false],
+const B={rules:{morale:true,rain:false}, start:[0,0], dead:[0,0], esc:[0,0], active:[0,0], fleeing:[0,0], startT:[new Int32Array(NT),new Int32Array(NT)], deadT:[new Int32Array(NT),new Int32Array(NT)], escT:[new Int32Array(NT),new Int32Array(NT)], killsT:[new Int32Array(NT),new Int32Array(NT)], broken:[false,false],
   combat:[0,0], hunt:false, noRout:false, noHunt:false, phaseT:0, shieldBlock:[.5,.5], adjBlock:[.3,.3], shieldArm:[3,3], armyLoss:[0,0], hasMelee:[1,1], onKill:null, onEscape:null, tcx:[0,0], tcz:[0,0]};
 const TEAMCOL=[[0.24,0.45,0.90],[0.86,0.27,0.22]];
 
@@ -180,7 +180,7 @@ function assignFlankSides(){
 function resetBattle(){
   N=0; G=[]; tick=0; simTime=0;
   B.start=[0,0]; B.dead=[0,0]; B.esc=[0,0]; B.active=[0,0]; B.fleeing=[0,0]; B.armyLoss=[0,0];
-  B.startT=[new Int32Array(NT),new Int32Array(NT)]; B.deadT=[new Int32Array(NT),new Int32Array(NT)]; B.escT=[new Int32Array(NT),new Int32Array(NT)]; B.broken=[false,false]; B.lastKill=0; B.phaseT=0; B.noHunt=false;
+  B.startT=[new Int32Array(NT),new Int32Array(NT)]; B.deadT=[new Int32Array(NT),new Int32Array(NT)]; B.escT=[new Int32Array(NT),new Int32Array(NT)]; B.killsT=[new Int32Array(NT),new Int32Array(NT)]; B.broken=[false,false]; B.lastKill=0; B.phaseT=0; B.noHunt=false;
   clearProjectiles();
 }
 function setAbilities(team,ab){ B.shieldBlock[team]=ab.shieldwall?.7:.5; B.adjBlock[team]=ab.shieldwall?.45:.3; B.shieldArm[team]=ab.shieldwall?5:3; }
@@ -208,7 +208,7 @@ function kill(t,src){
   SS[t]=0; DE[t]=0.001; HP[t]=0; VX[t]=0; VZ[t]=0;
   const tm=TM[t], ty=TY[t];
   B.dead[tm]++; B.deadT[tm][ty]++; B.lastKill=simTime; sfx(EV_KILL,PX[t],PY[t],PZ[t]);
-  if(src>=0&&src<N) KL[src]++;
+  if(src>=0&&src<N){ KL[src]++; B.killsT[TM[src]][TY[src]]++; }
   if(B.onKill) B.onKill(t,src);
   const c=TEAMCOL[tm];
   for(let n=0;n<3;n++) spawnQ(PX[t],PY[t]+0.8,PZ[t],(rnd()-.5)*3,2+rnd()*2.5,(rnd()-.5)*3,1.6,0.16,0,c[0]*.8,c[1]*.8,c[2]*.8,1,5);

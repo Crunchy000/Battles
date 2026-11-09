@@ -424,11 +424,13 @@ function poolAt(L){ const ids=POOL_AT.filter(p=>p[0]<=L).map(p=>p[1]); return id
 const MAP_CYCLE=['grassland','hills','forest','river','pass','desert','fortress'];
 const STYLE_CYCLE=['balanced','horde','ranged','cavalry','balanced','siege','horde'];
 const ROMAN=['','','II','III','IV','V','VI','VII','VIII','IX','X'];
+const CAMPAIGN_LEN=25;   // battle 25 is the last battle of the campaign
 function campaignLevel(L){
-  const mapId=MAP_CYCLE[(L-1)%7];
+  const final=L===CAMPAIGN_LEN;
+  const mapId=final?'grassland':MAP_CYCLE[(L-1)%7];
   const cycle=Math.floor((L-1)/7)+1;
   const count=Math.min(30000,Math.round(60*Math.pow(1.3,L-1)));
   const pool=poolAt(L);
-  return {L,mapId,count,pool,style:STYLE_CYCLE[(L-1)%7],ulv:Math.min(5,Math.floor((L-1)/3)),seed:1000+L*7919,
-    name:BATTLE_NAMES[mapId]+(cycle>1?' '+(ROMAN[cycle]||cycle):''), reward:Math.round(80+L*45*Math.pow(1.18,L))};
+  return {L,final,mapId,count,pool,style:final?'balanced':STYLE_CYCLE[(L-1)%7],ulv:Math.min(5,Math.floor((L-1)/3)),seed:1000+L*7919,
+    name:final?'The Last Battle':BATTLE_NAMES[mapId]+(cycle>1?' '+(ROMAN[cycle]||cycle):''), reward:Math.round(80+L*45*Math.pow(1.18,L))};
 }

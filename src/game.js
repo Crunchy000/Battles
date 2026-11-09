@@ -8,7 +8,7 @@ const mmss=t=>{ t=Math.max(0,Math.floor(t)); return Math.floor(t/60)+':'+String(
 const SAVE_KEY='massive-armies-v1';
 function defaultProg(){ return {gold:150,roster:{sword:60,archer:30},tech:{sword:true,archer:true},upg:{},level:1,won:{},layout:null,layoutSurv:null,saves:[],best:{endless:0,survival:0}}; }
 let PROG=defaultProg();
-function loadProg(data){ let p=data&&data.prog; if(!p){ try{ const s=localStorage.getItem(SAVE_KEY); if(s) p=JSON.parse(s); }catch(e){} } if(p&&typeof p==='object') PROG=Object.assign(defaultProg(),p); normalizeRoster(); }
+function loadProg(data){ let p=data&&data.prog; if(!p){ try{ const s=localStorage.getItem(SAVE_KEY); if(s) p=JSON.parse(s); }catch(e){} } if(p&&typeof p==='object') PROG=Object.assign(defaultProg(),p); PROG.level=clamp(PROG.level|0||1,1,CAMPAIGN_LEN); normalizeRoster(); }
 function saveProg(){ PROG.t=Date.now(); try{ localStorage.setItem(SAVE_KEY,JSON.stringify(PROG)); }catch(e){} cloudQueue(); }
 
 /* ---------- cloud save: core progress follows a signed-in player across devices ---------- */
@@ -188,12 +188,14 @@ function syncDeploy(){
       initUnit(N,g.team,g.type,g.cx+sa*lx+ca*lz,g.cz-ca*lx+sa*lz,g.a+g.slots[k+2],gi,lx,lz,g.slots[k+2]); N++; } }
   VIEW.hlGroup=D.sel;
 }
+const campaignDone=()=>!!PROG.won[CAMPAIGN_LEN];
 function openCampaign(L){
+  L=clamp(L|0,1,CAMPAIGN_LEN);
   const cl=campaignLevel(L), mapOpt={fortSide:1};
   enterDeploy({mode:'campaign',level:L,mapId:cl.mapId,seed:cl.seed,mapOpt,limited:true,editTeams:[0],zones:[ZONES[0],null],ulv:cl.ulv,title:`Battle ${L} · ${cl.name}`,
     makeGroups:T=>{ const red=genArmy(1,cl.count,cl.pool,cl.style,cl.seed+5,T,cl.mapId==='fortress'?{back:FORT_BACK}:{}); if(cl.mapId==='fortress'||cl.mapId==='pass'&&L%2===0) red.forEach(g=>{ if(UNITS[g.type].cls!=='cav') g.order='hold'; });
       return [...playerLayout(T,PROG.layout),...red]; }});
-  toast(`${cl.count} enemy soldiers on ${MAPS.find(m=>m.id===cl.mapId).name}`,2600);
+  toast(cl.final?`The last battle: ${fmt(cl.count)} enemy soldiers on ${MAPS.find(m=>m.id===cl.mapId).name}`:`${fmt(cl.count)} enemy soldiers on ${MAPS.find(m=>m.id===cl.mapId).name}`,2600);
 }
 function openEndless(mapId){
   enterDeploy({mode:'endless',mapId,seed:(Math.random()*1e6)|0,limited:true,editTeams:[0],zones:[ZONES[0],null],ulv:0,title:'Endless waves',makeGroups:T=>playerLayout(T,PROG.layout)});
@@ -307,6 +309,7 @@ function endBattle(winner){
   if(GAME.mode==='demo'){ banner(winner===0?'Blue wins':winner===1?'Red wins':'Stalemate',winner===0?'var(--blue)':winner===1?'var(--red)':'var(--fg)',2400); return; }
   if(GAME.mode==='endless') banner('Overrun','var(--red)',2200);
   else if(GAME.mode==='survival') banner('The wall falls','var(--red)',2200);
+  else if(GAME.mode==='campaign'&&winner===0&&GAME.level===CAMPAIGN_LEN) banner('The war is won','var(--brass-hi)',2600);
   else banner(winner===0?'Victory':winner===1?'Defeat':'Stalemate',winner===0?'var(--brass-hi)':winner===1?'var(--red)':'var(--fg)',2200);
 }
 function settleRewards(){
@@ -320,7 +323,7 @@ function settleRewards(){
       if(B.dead[0]/Math.max(1,B.start[0])<0.25){ const b=Math.round(bonus*0.25); lines.push(['Decisive: under 25% losses',b]); total+=b; }
       if(simTime<100){ const b=Math.round(bonus*0.15); lines.push(['Swift: won inside 100 seconds',b]); total+=b; }
       if(B.esc[0]===0){ const b=Math.round(bonus*0.1); lines.push(['Unbroken: no soldier routed off the field',b]); total+=b; }
-      PROG.won[L]=true; if(PROG.level<=L) PROG.level=L+1;
+      PROG.won[L]=true; if(PROG.level<=L) PROG.level=Math.min(L+1,CAMPAIGN_LEN);
     }
   } else if(GAME.mode==='endless'){ if(GAME.wave-1>PROG.best.endless) PROG.best.endless=GAME.wave-1; }
   else if(GAME.mode==='survival'){ const b=Math.floor(GAME.survT/10)*15; lines.push(['Time held',b]); total+=b; if(GAME.survT>PROG.best.survival) PROG.best.survival=Math.floor(GAME.survT); }
@@ -647,14 +650,18 @@ $('#speedSeg').addEventListener('click',e=>{ const b=e.target.closest('[data-spe
 $('#camSeg').addEventListener('click',e=>{ const b=e.target.closest('[data-cam]'); if(!b) return; camPreset(b.dataset.cam,false); document.querySelectorAll('#camSeg [data-cam]').forEach(x=>x.classList.toggle('on',x===b)); });
 $('#btnStats').onclick=()=>{ const p=$('#statsPanel'); p.hidden=!p.hidden; if(!p.hidden) renderStats(); };
 $('#btnEnd').onclick=()=>{ if(GAME.phase!=='battle') return; if(GAME.ended){ GAME.endTimer=0; return; } if(GAME.limited) endBattle(1); else { let w=B.active[0]>B.active[1]?0:B.active[1]>B.active[0]?1:-1; endBattle(w); } GAME.endTimer=0.4; };
+// kills each unit type has made and the deaths it has suffered, per side
+function casualtyTable(){
+  let rows=''; const tk=[0,0];
+  for(let ty=0;ty<NT;ty++){ const in0=B.startT[0][ty]>0, in1=B.startT[1][ty]>0; if(!in0&&!in1) continue;
+    tk[0]+=B.killsT[0][ty]; tk[1]+=B.killsT[1][ty];
+    rows+=`<tr><td class="nm"><span style="color:var(--muted)">${unitIcon(ty)}</span>${UNITS[ty].name}</td><td class="k">${in0?fmt(B.killsT[0][ty]):'·'}</td><td>${in0?fmt(B.deadT[0][ty]):'·'}</td><td class="k">${in1?fmt(B.killsT[1][ty]):'·'}</td><td>${in1?fmt(B.deadT[1][ty]):'·'}</td></tr>`; }
+  return `<table class="cas"><thead><tr><th rowspan="2">Unit</th><th colspan="2" class="b">Blue</th><th colspan="2" class="r">Red</th></tr><tr><th>Kills</th><th>Deaths</th><th>Kills</th><th>Deaths</th></tr></thead><tbody>${rows}</tbody>
+  <tfoot><tr><td class="nm">Total</td><td>${fmt(tk[0])}</td><td>${fmt(B.dead[0])}</td><td>${fmt(tk[1])}</td><td>${fmt(B.dead[1])}</td></tr><tr><td class="nm">Fled the field</td><td></td><td>${fmt(B.esc[0])}</td><td></td><td>${fmt(B.esc[1])}</td></tr></tfoot></table>`;
+}
 function renderStats(){
   const p=$('#statsPanel'); if(p.hidden) return;
-  let rows='';
-  for(let ty=0;ty<NT;ty++){ const s0=B.startT[0][ty], s1=B.startT[1][ty]; if(!s0&&!s1) continue;
-    rows+=`<tr><td class="nm"><span style="color:var(--muted)">${unitIcon(ty)}</span>${UNITS[ty].name}</td><td style="color:var(--blue)">${s0?fmt(s0-B.deadT[0][ty]):'·'}</td><td>${s0?fmt(B.deadT[0][ty]):''}</td><td style="color:var(--red)">${s1?fmt(s1-B.deadT[1][ty]):'·'}</td><td>${s1?fmt(B.deadT[1][ty]):''}</td></tr>`; }
-  p.innerHTML=`<h4 class="hudtext" style="margin:0 0 6px;display:flex;align-items:center">Casualties<button class="x" onclick="this.closest('.card').hidden=true" aria-label="Close">×</button></h4>
-  <table class="cas"><thead><tr><th>Unit</th><th>Blue</th><th>Lost</th><th>Red</th><th>Lost</th></tr></thead><tbody>${rows}</tbody>
-  <tfoot><tr><td class="nm">Routed off field</td><td></td><td>${fmt(B.esc[0])}</td><td></td><td>${fmt(B.esc[1])}</td></tr></tfoot></table>`;
+  p.innerHTML=`<h4 class="hudtext" style="margin:0 0 6px;display:flex;align-items:center">Casualties<button class="x" onclick="this.closest('.card').hidden=true" aria-label="Close">×</button></h4>${casualtyTable()}`;
 }
 function inspectUnit(i){ VIEW.hlUnit=i; const p=$('#inspect'); if(i<0){ p.hidden=true; return; } p.hidden=false; updateInspect(); }
 function updateInspect(){
@@ -803,7 +810,7 @@ function showWelcome(){
   <p class="lede">Paint thousands of geometric soldiers onto the field, give each regiment its orders, then watch the lines collide. Earn gold from every enemy you break, recruit, research, and grow toward armies of tens of thousands.</p>
   ${legendHtml()}
   <div class="actions" style="justify-content:flex-start">
-    <button class="btn primary" id="wCamp">${L>1?'Continue campaign · Battle '+L:'Start campaign'}</button>
+    <button class="btn primary" id="wCamp">${campaignDone()?'Campaign won · replay battles':L>1?`Continue campaign · Battle ${L} of ${CAMPAIGN_LEN}`:'Start campaign'}</button>
     <button class="btn" id="wSand">Sandbox</button>
     <button class="btn" id="wCustom">Custom battle</button>
     <button class="btn" id="wMore">Endless & Survival</button>
@@ -811,7 +818,7 @@ function showWelcome(){
   </div>
   <div class="hint">Drag to pan · scroll or pinch to zoom · right-drag or two-finger twist to turn · WASD and Q/E fly the camera · Space pauses · T opens the tech tree · tap a soldier to inspect it</div>`,s=>{
     $('#wX').onclick=closeModal; $('#wWatch').onclick=closeModal;
-    $('#wCamp').onclick=()=>openCampaign(PROG.level);
+    $('#wCamp').onclick=()=>campaignDone()?showBattles('campaign'):openCampaign(PROG.level);
     $('#wSand').onclick=()=>showBattles('sandbox'); $('#wCustom').onclick=()=>showBattles('custom'); $('#wMore').onclick=()=>showBattles('endless');
   });
 }
@@ -821,9 +828,9 @@ function showBattles(tab){
   let body='';
   if(tab==='campaign'){
     const top=PROG.level; const rows=[];
-    for(let L=1;L<=top+1;L++){ const cl=campaignLevel(L), locked=L>top, won=PROG.won[L];
-      rows.push(`<div class="lrow${locked?' locked':''}"><div class="no">${L}</div><div style="min-width:0"><div class="t">${cl.name}</div><div class="m">${MAPS.find(m=>m.id===cl.mapId).name} · ${fmt(cl.count)} enemies · ${STYLES[cl.style].name.toLowerCase()} · reward ${fmt(cl.reward)}${won?' · <span class="won">won</span>':''}</div></div>${locked?'<span class="hint">Win battle '+(L-1)+'</span>':`<button class="btn sm${L===top?' primary':''}" data-camp="${L}">${won?'Replay':'Deploy'}</button>`}</div>`); }
-    body=`<p class="lede">Your army: <b>${fmt(rosterTotal())}</b> soldiers in the roster, up to <b>${fmt(capOf())}</b> on the field at once. Enemies grow about 30% larger each battle. The fallen recover between battles, but soldiers who flee the field desert for good.</p><div class="list" id="campList">${rows.reverse().join('')}</div>`;
+    for(let L=1;L<=Math.min(top+1,CAMPAIGN_LEN);L++){ const cl=campaignLevel(L), locked=L>top, won=PROG.won[L];
+      rows.push(`<div class="lrow${locked?' locked':''}"><div class="no">${L}</div><div style="min-width:0"><div class="t">${cl.name}</div><div class="m">${cl.final?'Final battle · ':''}${MAPS.find(m=>m.id===cl.mapId).name} · ${fmt(cl.count)} enemies · ${STYLES[cl.style].name.toLowerCase()} · reward ${fmt(cl.reward)}${won?' · <span class="won">won</span>':''}</div></div>${locked?'<span class="hint">Win battle '+(L-1)+'</span>':`<button class="btn sm${L===top?' primary':''}" data-camp="${L}">${won?'Replay':'Deploy'}</button>`}</div>`); }
+    body=`<p class="lede">${campaignDone()?`You have won the war. Replay any battle, or take your army into Endless and Survival.`:`Battle ${Math.min(top,CAMPAIGN_LEN)} of ${CAMPAIGN_LEN}.`} Your army: <b>${fmt(rosterTotal())}</b> soldiers in the roster, up to <b>${fmt(capOf())}</b> on the field at once. Enemies grow about 30% larger each battle. The fallen recover between battles, but soldiers who flee the field desert for good.</p><div class="list" id="campList">${rows.reverse().join('')}</div>`;
   } else if(tab==='endless'){
     body=`<p class="lede">Deploy your roster and hold out against waves that grow 25% larger every round. Between waves your survivors heal fully and a third of the fallen return as reinforcements. Each broken wave pays a bonus. Best: <b>${PROG.best.endless}</b> waves.</p>
     <div class="grid2"><label class="field">Battlefield<select id="eMap">${mapOptions('grassland',['blank'])}</select></label></div><div class="actions"><button class="btn primary" id="eGo">Deploy</button></div>`;
@@ -911,12 +918,11 @@ function showResults(){
   let title, color, sub;
   if(GAME.mode==='endless'){ title=`Wave ${GAME.wave}`; color='var(--red)'; sub=`You broke ${GAME.wave-1} wave${GAME.wave-1===1?'':'s'} before being overrun.`; }
   else if(GAME.mode==='survival'){ title=mmss(GAME.survT); color='var(--brass-hi)'; sub='held before the wall fell.'; }
+  else if(GAME.mode==='campaign'&&won&&GAME.level===CAMPAIGN_LEN){ title='The war is won'; color='var(--brass-hi)'; sub=`You won the last battle. All ${CAMPAIGN_LEN} battles of the campaign are yours.`; }
   else { title=won?'Victory':GAME.winner===1?'Defeat':'Stalemate'; color=won?'var(--brass-hi)':GAME.winner===1?'var(--red)':'var(--fg)'; sub=GAME.mode==='campaign'?`Battle ${GAME.level} · ${campaignLevel(GAME.level).name}`:GAME.title; }
-  let rows='';
-  for(let ty=0;ty<NT;ty++){ const s0=B.startT[0][ty], s1=B.startT[1][ty]; if(!s0&&!s1) continue; rows+=`<tr><td class="nm"><span style="color:var(--muted)">${unitIcon(ty)}</span>${UNITS[ty].name}</td><td>${s0?fmt(s0):'·'}</td><td style="color:var(--blue)">${s0?fmt(B.deadT[0][ty]):''}</td><td>${s1?fmt(s1):'·'}</td><td style="color:var(--red)">${s1?fmt(B.deadT[1][ty]):''}</td></tr>`; }
   const goldHtml=GAME.limited?`<div class="goldlines">${r.lines.map(([l,v])=>`<div><span>${l}</span><b>+${fmt(v)}</b></div>`).join('')}<div class="total"><span>Gold earned</span><b>+${fmt(r.total)}</b></div></div>${r.deserted?`<div class="desert">${fmt(r.deserted)} soldier${r.deserted===1?'':'s'} fled the field and deserted. They have left your roster.</div>`:''}`:'';
   let btns='';
-  if(GAME.mode==='campaign') btns=won?`<button class="btn" id="rCouncil">Council</button><button class="btn" id="rRetry">Replay</button><button class="btn primary" id="rNext">Battle ${GAME.level+1}</button>`:`<button class="btn" id="rBattles">Battles</button><button class="btn" id="rCouncil">Council</button><button class="btn primary" id="rRetry">Try again</button>`;
+  if(GAME.mode==='campaign') btns=won?(GAME.level>=CAMPAIGN_LEN?`<button class="btn" id="rCouncil">Council</button><button class="btn" id="rRetry">Replay</button><button class="btn primary" id="rEndless">Endless & Survival</button>`:`<button class="btn" id="rCouncil">Council</button><button class="btn" id="rRetry">Replay</button><button class="btn primary" id="rNext">Battle ${GAME.level+1}</button>`):`<button class="btn" id="rBattles">Battles</button><button class="btn" id="rCouncil">Council</button><button class="btn primary" id="rRetry">Try again</button>`;
   else if(GAME.mode==='endless'||GAME.mode==='survival') btns=`<button class="btn" id="rBattles">Battles</button><button class="btn" id="rCouncil">Council</button><button class="btn primary" id="rAgain">Go again</button>`;
   else btns=`<button class="btn" id="rBattles">Battles</button><button class="btn primary" id="rEdit">Edit armies and refight</button>`;
   openModal(`<div class="sheet-h"><div><h2 class="result-title" style="color:${color}">${title}</h2><div class="sub" style="margin-top:6px">${esc(sub)}</div></div></div>
@@ -924,11 +930,11 @@ function showResults(){
   <div class="stat"><div class="l">Red lost</div><div class="v" style="color:var(--red)">${fmt(B.dead[1])}<span class="hudtext" style="font-size:14px;color:var(--dim)"> / ${fmt(B.start[1])}</span></div></div>
   <div class="stat"><div class="l">Routed</div><div class="v">${fmt(B.esc[0]+B.esc[1])}</div></div><div class="stat"><div class="l">Battle time</div><div class="v">${mmss(simTime)}</div></div></div>
   ${goldHtml}
-  <div style="overflow-x:auto"><table class="cas"><thead><tr><th>Unit</th><th>Blue</th><th>Lost</th><th>Red</th><th>Lost</th></tr></thead><tbody>${rows}</tbody></table></div>
+  <div style="overflow-x:auto">${casualtyTable()}</div>
   <div class="actions">${btns}</div>`,s=>{
     const on=(id,f)=>{ const e=s.querySelector('#'+id); if(e) e.onclick=f; };
     on('rCouncil',()=>showCouncil('recruit')); on('rBattles',()=>showBattles(GAME.mode==='endless'?'endless':GAME.mode==='survival'?'survival':'campaign'));
-    on('rNext',()=>openCampaign(GAME.level+1)); on('rRetry',()=>openCampaign(GAME.level));
+    on('rNext',()=>openCampaign(GAME.level+1)); on('rRetry',()=>openCampaign(GAME.level)); on('rEndless',()=>showBattles('endless'));
     on('rAgain',()=>GAME.mode==='endless'?openEndless(GAME.mapId):openSurvival());
     on('rEdit',()=>{ const gs=GAME.lastDeploy; enterDeploy({mode:GAME.mode,limited:false,editTeams:[0,1],rules:GAME.rules,title:GAME.title,keepTerrain:true,keepCamera:true,groups:gs}); });
   });

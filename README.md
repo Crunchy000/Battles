@@ -10,7 +10,7 @@ A large-scale army battle game that runs in the browser on WebGPU. Paint thousan
 - **Simulation**: every soldier is simulated individually, with formations, flanking and rear attacks, cavalry charges and bracing spears, projectile physics, morale and routing. Routed soldiers only rally beside a commander, and an army reduced to a tenth of its strength breaks. Spatial grids keep battles of 50,000+ soldiers running.
 - **Deployment painting**: brush, line, block, hollow square, column and wedge tools, plus select/move/turn, orders per regiment, undo, saved formations and shareable formation codes.
 - **Battlefields**: grassland, hills, forest, river crossing, mountain pass, desert and a fortified wall, plus a map editor. Height, forests, water, walls and stakes all affect combat.
-- **Modes**: campaign, endless waves, survival behind a wall, sandbox and custom battles of up to 30,000 a side.
+- **Modes**: a 25-battle campaign ending in a 30,000-strong last battle, endless waves, survival behind a wall, sandbox and custom battles of up to 30,000 a side.
 - **Progression**: gold from kills and victories, recruiting, a six-branch tech tree, upgrades and army limits from 120 to 30,000. New units upgrade older ones in five lines (Swordsmen → Heavy Infantry → Champions, Archers → Crossbowmen → Musketeers, Light → Heavy Cavalry → Lancers, Catapults → Mortars, Ballistae → Cannons), so a developed army keeps a short list of types. Soldiers who flee the field desert and leave your roster.
 - **Sound**: synthesised in the browser and placed by distance from the camera.
 

@@ -128,6 +128,12 @@ input[type=range]{width:100%;accent-color:var(--brass)}
 table.cas{width:100%;border-collapse:collapse;font-family:var(--f-ui);font-size:13.5px;letter-spacing:.02em;font-variant-numeric:tabular-nums}
 table.cas th{font-weight:600;color:var(--dim);text-align:right;padding:3px 4px;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
 table.cas th:first-child,table.cas td:first-child{text-align:left}
+table.cas thead tr+tr th:first-child{text-align:right}
+table.cas th[colspan]{text-align:center;border-bottom:1px solid var(--line2)}
+table.cas .b{color:var(--blue)} table.cas .r{color:var(--red)}
+table.cas td.k{color:var(--fg)}
+table.cas tfoot td{color:var(--fg);font-weight:600}
+table.cas tfoot tr+tr td{color:var(--muted);font-weight:400}
 table.cas td{padding:3px 4px;text-align:right;border-top:1px solid var(--line2);color:var(--muted)}
 table.cas td.nm{color:var(--fg);display:flex;align-items:center;gap:6px}
 table.cas td .uicon{width:16px;height:16px}
