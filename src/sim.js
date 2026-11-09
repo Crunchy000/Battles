@@ -171,8 +171,13 @@ function addGroupsToSim(dgs){
       B.start[dg.team]++; B.startT[dg.team][dg.type]++; N++;
     }
   }
-  assignFlankSides();
+  assignFlankSides(); assignEscorts();
 }
+// commanders and medics marching with the army attach to the nearest fighting regiment and keep their place beside it
+function escortHost(g){ let best=null, bd=1e18; for(const h of G){ if(h.team!==g.team||h.cnt<=0) continue; const c=UNITS[h.type].cls; if(c==='sup'||c==='cav'||c==='sie') continue; const d=(h.ax-g.ax)**2+(h.az-g.az)**2; if(d<bd){ bd=d; best=h; } } return best; }
+function attachEscort(g){ const h=escortHost(g); g.host=h; if(!h) return; const dx=g.ax-h.ax, dz=g.az-h.az; let lx=h.sa*dx-h.ca*dz, lz=h.ca*dx+h.sa*dz;
+  if(Math.hypot(lx,lz)>h.rad+14){ lx=0; lz=-(h.rad+3); } g.hlx=lx; g.hlz=lz; }
+function assignEscorts(){ for(const g of G){ const st=STT[g.team][g.type]; if(g.host===undefined && (st.aura||st.heal) && g.order===O_ADV) attachEscort(g); } }
 function assignFlankSides(){
   for(let t=0;t<2;t++){ let sx=0,sz=0,n=0; for(const g of G) if(g.team===t&&g.cnt>0){ sx+=g.ax*g.cnt; sz+=g.az*g.cnt; n+=g.cnt; } if(n){B.tcx[t]=sx/n; B.tcz[t]=sz/n;} }
   for(const g of G){ if(g.order===O_FLANK && g.phase===0){ g.side = (g.az>=B.tcz[g.team]) ? 1 : -1; if(g.team===1) g.side=-g.side; } }
@@ -287,6 +292,7 @@ function updateGroups(){
       for(const h of G){ if(h.team===g.team||h.alive<=0) continue; let d=(h.cx-g.cx)**2+(h.cz-g.cz)**2; if(st.cls==='cav'){ const hc=UNITS[h.type].cls; if(hc==='rng'||hc==='sie') d*=0.35; } if(d<bd){ bd=d; best=h; } }
       g.tg=best;
     }
+    if(retarget && g.host && (g.host.alive<=0||g.order!==O_ADV)){ if(g.order===O_ADV) attachEscort(g); else g.host=null; }
     if(stall && (g.order===O_HOLD||g.order===O_FLANK)){ g.order=O_ADV; }
     const err=g.fcnt? g.err/g.fcnt : 0;
     let spd=st.speed*0.82; if(err>2.2) spd*=Math.max(0.22,1-(err-2.2)*0.18);
@@ -295,8 +301,12 @@ function updateGroups(){
     const lead=Math.hypot(ex-g.cx,ez-g.cz), leash=4+g.rad*0.25;
     const leashMul= lead>leash ? Math.max(0,1-(lead-leash)/4) : 1;
     let mx=0,mz=0,move=false; g.retreat=false;
-    const tg=g.tg;
-    if(g.order===O_ADV||g.order===O_CHARGE){
+    const tg=g.tg, h=g.host;
+    if(h && h.alive>0 && g.order===O_ADV){
+      // escort: hold station beside the host regiment, moving no faster than it needs to
+      const tx=h.ax+h.sa*g.hlx+h.ca*g.hlz, tz=h.az-h.ca*g.hlx+h.sa*g.hlz, dx=tx-g.ax, dz=tz-g.az, d=Math.hypot(dx,dz);
+      if(d>0.4){ mx=dx; mz=dz; move=true; spd=Math.min(st.speed,Math.max(h.spdNow*1.1,d*0.9)); g.escort=true; }
+    } else if(g.order===O_ADV||g.order===O_CHARGE){
       if(st.isR){
         const rng=st.range*0.85;
         if(g.ned>rng && g.ned<1e8){ const f=flowAt(g.team,g.ax,g.az); if(f[0]||f[1]){ mx=f[0]; mz=f[1]; } else { mx=g.nex-g.ax; mz=g.nez-g.az; } move=true; }
@@ -329,7 +339,8 @@ function updateGroups(){
         if((f[0]||f[1]) && passAt(fx,fz)){ nax=fx; naz=fz; } else if(passAt(nax,g.az)) naz=g.az; else if(passAt(g.ax,naz)) nax=g.ax; else { nax=g.ax; naz=g.az; }
       }
       g.ax=nax; g.az=naz; g.spdNow=spd;
-      if(!g.retreat){ const rate=Math.min(0.7, st.speed*0.9/Math.max(3,g.rad))*(st.cls==='cav'?2:1); g.a=turnToward(g.a,Math.atan2(uz,ux),rate*DT); }
+      if(h && g.escort){ g.escort=false; g.a=turnToward(g.a,h.a,0.6*DT); }
+      else if(!g.retreat){ const rate=Math.min(0.7, st.speed*0.9/Math.max(3,g.rad))*(st.cls==='cav'?2:1); g.a=turnToward(g.a,Math.atan2(uz,ux),rate*DT); }
     } else {
       g.spdNow=0;
       if(g.ned<220 && g.order!==O_HOLD){ const rate=Math.min(0.5,st.speed*0.8/Math.max(3,g.rad)); g.a=turnToward(g.a,Math.atan2(g.nez-g.az,g.nex-g.ax),rate*DT); }

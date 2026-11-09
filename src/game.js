@@ -155,12 +155,13 @@ function autoCounts(){
   UNITS.forEach((u,i)=>{ if(fieldable(u.id)) counts[i]=Math.floor((PROG.roster[u.id]||0)*f); });
   return counts;
 }
+// the formation the player last chose (older saves stored a number)
+function progForm(){ if(PROG.formId&&FORM_BY[PROG.formId]) return PROG.formId; const old=['ranks','line','blocks','wedge','column'][PROG.form|0]||'ranks'; PROG.formId=old; return old; }
+// extra layout hints for the map: the fortress gates for an attacking army
+function formOpt(team){ return GAME.mapId==='fortress'&&team===0&&GAME.mode!=='survival'?{gates:FORT_GATES.map(g=>g*MS)}:{}; }
 function playerLayout(T,saved,opt){
-  const zoneSaved=deserializeGroups(saved,0);
-  let gs=trimToRoster(validateGroups(zoneSaved,T));
-  const n=gs.reduce((a,g)=>a+g.slots.length/3,0);
-  gs=validateGroups(layoutFormation(0,autoCounts(),T,FORMATIONS[(PROG.form|0)%FORMATIONS.length].id,PROG.order,Object.assign({cav:PROG.cav||'wings'},opt||{})),T);
-  return gs;
+  const id=progForm();
+  return validateGroups(layoutFormation(0,autoCounts(),T,id,PROG.order||null,Object.assign({cav:PROG.cav||FORM_BY[id].cav},formOpt(0),opt||{})),T);
 }
 function enterDeploy(cfg){
   closeModal(); hideCards(); $('#banner').hidden=true;
@@ -172,8 +173,8 @@ function enterDeploy(cfg){
   onTerrainChanged();
   STT=[playerStats(),enemyStats(GAME.enemyUlv)];
   D.groups=[]; D.nextId=1; D.undo=[]; D.sel=-1; D.selObj.clear(); BSEL.clear(); D.team=GAME.editTeams[0]; D.terrain=false; D.stroke=null;
-  D.fo=[{form:0,order:null,cav:'wings'},{form:0,order:null,cav:'wings'}];
-  if(GAME.limited) D.fo[0]={form:(PROG.form|0)%FORMATIONS.length,order:PROG.order||null,cav:PROG.cav||'wings'};
+  D.fo=[{form:'ranks',order:null,cav:'wings'},{form:'ranks',order:null,cav:'wings'}];
+  if(GAME.limited){ const id=progForm(); D.fo[0]={form:id,order:PROG.order||null,cav:PROG.cav||FORM_BY[id].cav}; }
   const gs=cfg.groups || (cfg.makeGroups?cfg.makeGroups(TER):[]);
   for(const g of gs) addDeployGroup(g);
   const av=availableTypes(); if(!av.includes(D.type)) D.type=av[0]||0;
@@ -192,13 +193,15 @@ function syncDeploy(){
       initUnit(N,g.team,g.type,g.cx+sa*lx+ca*lz,g.cz-ca*lx+sa*lz,g.a+g.slots[k+2],gi,lx,lz,g.slots[k+2]); N++; } }
   refreshHighlight();
 }
+const ENEMY_FORMS=['ranks','line','wedge','blocks','crescent','column','echelon','hammer'];
 const campaignDone=()=>!!PROG.won[CAMPAIGN_LEN];
 function openCampaign(L){
   L=clamp(L|0,1,CAMPAIGN_LEN);
   const cl=campaignLevel(L), mapOpt={fortSide:1};
   enterDeploy({mode:'campaign',level:L,mapId:cl.mapId,seed:cl.seed,mapOpt,limited:true,editTeams:[0],zones:[ZONES[0],null],ulv:cl.ulv,title:`Battle ${L} · ${cl.name}`,
-    makeGroups:T=>{ const red=layoutFormation(1,armyCounts(cl.count,cl.pool,cl.style,mulberry32(cl.seed+5)),T,FORMATIONS[(L*2)%FORMATIONS.length].id,null,cl.mapId==='fortress'?{back:FORT_BACK}:{}); if(cl.mapId==='fortress'||cl.mapId==='pass'&&L%2===0) red.forEach(g=>{ if(UNITS[g.type].cls!=='cav') g.order='hold'; });
+    makeGroups:T=>{ const red=layoutFormation(1,armyCounts(cl.count,cl.pool,cl.style,mulberry32(cl.seed+5)),T,ENEMY_FORMS[L%ENEMY_FORMS.length],null,cl.mapId==='fortress'?{back:FORT_BACK}:{}); if(cl.mapId==='fortress'||cl.mapId==='pass'&&L%2===0) red.forEach(g=>{ if(UNITS[g.type].cls!=='cav') g.order='hold'; });
       return [...playerLayout(T,PROG.layout),...red]; }});
+  if(cl.mapId==='fortress') setTimeout(()=>toast('Fortress: the walls cannot be broken. Try Storm the gates to line your columns up on the three gates.',4200),2800);
   toast(cl.final?`The last battle: ${fmt(cl.count)} enemy soldiers on ${MAPS.find(m=>m.id===cl.mapId).name}`:`${fmt(cl.count)} enemy soldiers on ${MAPS.find(m=>m.id===cl.mapId).name}`,2600);
 }
 function openEndless(mapId){
@@ -334,9 +337,8 @@ function settleRewards(){
   else if(GAME.mode==='survival'){ const b=Math.floor(GAME.survT/10)*15; lines.push(['Time held',b]); total+=b; if(GAME.survT>PROG.best.survival) PROG.best.survival=Math.floor(GAME.survT); }
   // soldiers who fled off the field have deserted: they leave the roster for good
   let deserted=0;
-  // soldiers still fleeing when the battle ends never come back either
-  const fled=new Int32Array(NT); for(let i=0;i<N;i++) if(TM[i]===0&&SS[i]===2) fled[TY[i]]++;
-  if(GAME.limited){ for(let ty=0;ty<NT;ty++){ const n=B.escT[0][ty]+fled[ty]; if(!n) continue; const id=UNITS[ty].id; const had=PROG.roster[id]||0; const lost=Math.min(had,n); PROG.roster[id]=had-lost; deserted+=lost; } }
+  // (soldiers still running when the battle ends are rounded up; Endless and Survival never cost deserters)
+  if(GAME.limited&&GAME.mode==='campaign'){ for(let ty=0;ty<NT;ty++){ const n=B.escT[0][ty]; if(!n) continue; const id=UNITS[ty].id; const had=PROG.roster[id]||0; const lost=Math.min(had,n); PROG.roster[id]=had-lost; deserted+=lost; } }
   PROG.gold+=total; saveProg();
   GAME.settled={lines,total,deserted}; return GAME.settled;
 }
@@ -505,7 +507,7 @@ function setSel(list,add){
 function selectGroup(gi,add){ setSel(gi>=0&&D.groups[gi]?[D.groups[gi]]:[],add); }
 const battleTeams=()=>GAME.limited?[0]:[0,1];
 function setBattleSel(list,add){ if(!add) BSEL.clear(); for(const gi of list){ if(add&&list.length===1&&BSEL.has(gi)) BSEL.delete(gi); else BSEL.add(gi); } refreshHighlight(); renderGroupPanel(); }
-function setBattleOrder(gi,k){ const g=G[gi]; if(!g) return; g.order=k; if(k===O_FLANK){ g.phase=0; g.tmr=0; assignFlankSides(); } }
+function setBattleOrder(gi,k){ const g=G[gi]; if(!g) return; g.order=k; const st=STT[g.team][g.type]; if(st.aura||st.heal){ if(k===O_ADV) attachEscort(g); else g.host=null; } if(k===O_FLANK){ g.phase=0; g.tmr=0; assignFlankSides(); } }
 function selectAll(){ if(GAME.phase==='deploy') setSel(D.groups.filter(g=>g.team===D.team&&GAME.editTeams.includes(g.team)));
   else if(GAME.phase==='battle'){ const t=battleTeams(); setBattleSel(G.map((g,k)=>k).filter(k=>G[k].cnt>0&&t.includes(G[k].team))); } }
 // world point to screen pixels (CSS px), or null when behind the camera
@@ -553,6 +555,13 @@ const FORM_ICONS={
   line:'<rect x="1" y="7" width="22" height="4.5" rx="1"/><rect x="1" y="14" width="22" height="3.5" rx="1" opacity=".55"/>',
   blocks:'<rect x="2" y="3" width="5.5" height="5.5"/><rect x="9.25" y="3" width="5.5" height="5.5"/><rect x="16.5" y="3" width="5.5" height="5.5"/><rect x="5.6" y="12" width="5.5" height="5.5"/><rect x="12.9" y="12" width="5.5" height="5.5"/>',
   wedge:'<rect x="9.5" y="2" width="5" height="3.4" rx="1"/><rect x="6.5" y="7.2" width="11" height="3.4" rx="1"/><rect x="3.5" y="12.4" width="17" height="3.4" rx="1"/><rect x="1" y="17.6" width="22" height="3.4" rx="1"/>',
+  shieldwall:'<rect x="2" y="3" width="20" height="6.5" rx="1"/><rect x="2" y="12" width="20" height="3.5" rx="1" opacity=".7"/><rect x="2" y="18" width="20" height="3" rx="1" opacity=".45"/>',
+  hammer:'<rect x="6" y="9" width="12" height="9" rx="1"/><path d="M1 12V4h4v4l2-1-3 5zM23 12V4h-4v4l-2-1 3 5z"/>',
+  crescent:'<path d="M1.5 3.5Q12 17 22.5 3.5V9Q12 22.5 1.5 9Z"/><rect x="7" y="18.5" width="10" height="3" rx="1" opacity=".5"/>',
+  echelon:'<rect x="1" y="3" width="7" height="4.5" rx="1"/><rect x="8.5" y="8.5" width="7" height="4.5" rx="1"/><rect x="16" y="14" width="7" height="4.5" rx="1"/><rect x="1" y="9.5" width="7" height="2.5" rx="1" opacity=".5"/><rect x="8.5" y="15" width="7" height="2.5" rx="1" opacity=".5"/>',
+  square:'<path fill-rule="evenodd" d="M3 3h18v18H3zM7.5 7.5v9h9v-9z"/><rect x="10" y="10" width="4" height="4" rx=".5" opacity=".55"/>',
+  screen:'<circle cx="3.5" cy="5" r="1.7"/><circle cx="8.5" cy="5" r="1.7"/><circle cx="13.5" cy="5" r="1.7"/><circle cx="18.5" cy="5" r="1.7"/><rect x="2" y="10" width="20" height="5" rx="1"/><rect x="2" y="17" width="20" height="3.5" rx="1" opacity=".55"/>',
+  assault:'<rect x="0.5" y="11" width="23" height="2" opacity=".45"/><rect x="2" y="15" width="5" height="7" rx="1"/><rect x="9.5" y="15" width="5" height="7" rx="1"/><rect x="17" y="15" width="5" height="7" rx="1"/><path d="M4.5 3l2.5 4h-5zM12 3l2.5 4h-5zM19.5 3l2.5 4h-5z"/>',
   column:'<rect x="8" y="1.5" width="8" height="4.2" rx="1"/><rect x="8" y="7.2" width="8" height="4.2" rx="1"/><rect x="8" y="12.9" width="8" height="4.2" rx="1"/><rect x="8" y="18.6" width="8" height="4.2" rx="1"/>',
 };
 const formIcon=id=>`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${FORM_ICONS[id]}</svg>`;
@@ -560,41 +569,21 @@ const editTeam=()=>GAME.limited?0:D.team;
 const teamCounts=t=>GAME.limited&&t===0?autoCounts():(D.comp[t]||new Array(NT).fill(0));
 // the infantry and missile types present, in this side's front-to-back order
 function bandTypes(t){ const c=teamCounts(t); const present=UNITS.map((u,k)=>k).filter(k=>c[k]>0&&(UNITS[k].cls==='inf'||UNITS[k].cls==='rng')).map(k=>UNITS[k].id);
-  const o=(D.fo[t].order||BAND_ORDER).filter(id=>present.includes(id)); for(const id of present) if(!o.includes(id)) o.splice(BAND_ORDER.includes(id)?Math.min(o.length,BAND_ORDER.indexOf(id)):o.length,0,id); return o; }
+  const o=(D.fo[t].order||formationOrder(D.fo[t].form)).filter(id=>present.includes(id)); for(const id of present) if(!o.includes(id)) o.splice(BAND_ORDER.includes(id)?Math.min(o.length,BAND_ORDER.indexOf(id)):o.length,0,id); return o; }
 function relayout(t){
   D.selObj.clear(); D.sel=-1;
   let gs;
   if(GAME.limited&&GAME.mode==='survival'&&t===0) gs=layoutSurvival(autoCounts(),TER);
-  else { const f=D.fo[t]; gs=layoutFormation(t,teamCounts(t),TER,FORMATIONS[f.form].id,bandTypes(t),{cav:f.cav}); }
+  else { const f=D.fo[t]; gs=layoutFormation(t,teamCounts(t),TER,f.form,bandTypes(t),Object.assign({cav:f.cav},formOpt(t))); }
   gs=validateGroups(gs,TER); D.groups=D.groups.filter(g=>g.team!==t); gs.forEach(addDeployGroup);
-  if(GAME.limited&&t===0){ const f=D.fo[0]; PROG.form=f.form; PROG.order=f.order; PROG.cav=f.cav; saveProg(); }
+  if(GAME.limited&&t===0){ const f=D.fo[0]; PROG.formId=f.form; PROG.order=f.order; PROG.cav=f.cav; saveProg(); }
   syncDeploy(); buildDeployDock();
 }
-function setFormation(k){ const t=editTeam(); pushUndo(); D.fo[t].form=k; relayout(t); }
+// choosing a formation brings its own unit order, horse position and orders
+function setFormation(id){ const t=editTeam(), F=FORM_BY[id]; pushUndo(); Object.assign(D.fo[t],{form:id,order:null,cav:F.cav}); relayout(t); toast(`${F.name}: ${F.plan}`,1800); }
 function moveBand(id,dir){ const t=editTeam(), o=bandTypes(t), i=o.indexOf(id), j=i+dir; if(i<0||j<0||j>=o.length) return; [o[i],o[j]]=[o[j],o[i]]; pushUndo(); D.fo[t].order=o; D.type=UID[id]; relayout(t); }
 function setComp(t,ty,v){ pushUndo(); const c=D.comp[t]||(D.comp[t]=new Array(NT).fill(0)); const room=MAXU-2000-D.comp[t^1].reduce((a,b)=>a+b,0)-c.reduce((a,b,k)=>a+(k===ty?0:b),0); c[ty]=clamp(Math.round(v)||0,0,Math.max(0,room)); relayout(t); }
 function fillComp(t,style,total){ pushUndo(); D.comp[t]=armyCounts(clamp(total|0,0,30000),UNITS.map(u=>u.id),style,mulberry32((Math.random()*1e9)|0)); relayout(t); }
-// legacy entry point (Formation button) kept for the welcome flows
-function autoDeploy(next){
-  pushUndo(); D.selObj.clear(); D.sel=-1;
-  if(GAME.limited&&GAME.mode==='survival'){ const gs=validateGroups(layoutSurvival(autoCounts(),TER),TER); D.groups=D.groups.filter(g=>g.team!==0); gs.forEach(addDeployGroup); syncDeploy(); refreshDeployUi(); toast('Gates held by infantry, archers on the wall'); return; }
-  if(next) D.form=(D.form+1)%FORMATIONS.length;
-  const team=GAME.limited?0:D.team; let counts;
-  if(GAME.limited) counts=autoCounts();
-  else { const c=deployCounts(team); counts=c.total?c.by:armyCounts(900,UNITS.map(u=>u.id),'balanced',mulberry32((Math.random()*1e9)|0)); }
-  const gs=validateGroups(layoutFormation(team,counts,TER,FORMATIONS[D.form].id,D.order),TER);
-  D.groups=D.groups.filter(g=>g.team!==team); gs.forEach(addDeployGroup);
-  if(GAME.limited){ PROG.form=D.form; PROG.order=D.order; saveProg(); }
-  syncDeploy(); buildDeployDock(); toast(`Formation: ${FORMATIONS[D.form].name}`,1600);
-}
-// Shuffle: a new front-to-back order of the unit types, keeping the current formation
-function shuffleOrder(){
-  const team=editTeam(), ids=bandTypes(team).slice();
-  if(ids.length<2){ toast('Shuffling needs at least two kinds of infantry or missile troops'); return; }
-  const prev=ids.join(); let tries=0;
-  do{ for(let i=ids.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [ids[i],ids[j]]=[ids[j],ids[i]]; } }while(ids.join()===prev&&++tries<8);
-  pushUndo(); D.fo[team].order=ids; relayout(team);
-}
 function clearTeam(){ if(!GAME.limited){ pushUndo(); D.comp[D.team]=new Array(NT).fill(0); relayout(D.team); toast('Army cleared. Undo brings it back.'); return; } pushUndo(); D.groups=D.groups.filter(g=>g.team!==D.team||!GAME.editTeams.includes(g.team)); D.sel=-1; syncDeploy(); refreshDeployUi(); toast('Cleared. Undo brings them back.'); }
 
 /* ---------- map editor ---------- */
@@ -647,6 +636,7 @@ function buildDeployDock(){
         const [f,b]=el.querySelectorAll('.mv button'); f.onclick=()=>moveBand(id,-1); b.onclick=()=>moveBand(id,1);
         chips.appendChild(el); });
       chips.insertAdjacentHTML('beforeend','<span class="strip-l">Back</span>'); }
+    if(!surv&&!D.terrain){ const F=FORM_BY[D.fo[t].form]||FORMATIONS[0]; chips.insertAdjacentHTML('beforeend',`<div class="fplan" title="${esc(F.desc)}"><b>${F.name}</b><span>Orders: ${F.plan}</span><span>${D.fo[t].order?'Your own order of ranks':'Ranks in the formation’s order'}</span></div>`); }
     // army builder for sandbox and custom battles
     if(!GAME.limited){ const comp=$('#comp'); comp.innerHTML='';
       const fill=document.createElement('div'); fill.className='fill';
@@ -671,13 +661,12 @@ function buildDeployDock(){
     const t=editTeam(), f=D.fo[t];
     if(surv){ const b=document.createElement('button'); b.className='btn sm'; b.textContent='Reset to the wall'; b.onclick=()=>{ pushUndo(); relayout(0); }; tools.appendChild(b); }
     else {
-      FORMATIONS.forEach((fm,k)=>{ const b=document.createElement('button'); b.className='ftile'+(f.form===k?' on':''); b.innerHTML=formIcon(fm.id)+`<span>${fm.name}</span>`; b.title=`${fm.name} formation (front at the top)`; b.setAttribute('aria-pressed',f.form===k); b.onclick=()=>setFormation(k); tools.appendChild(b); });
+      FORMATIONS.forEach(fm=>{ const on=f.form===fm.id, b=document.createElement('button'); b.className='ftile'+(on?' on':''); b.innerHTML=formIcon(fm.id)+`<span>${fm.name}</span>`; b.title=`${fm.name} (front at the top). ${fm.desc} Orders: ${fm.plan}.`; b.setAttribute('aria-pressed',on); b.onclick=()=>setFormation(fm.id); tools.appendChild(b); });
       tools.insertAdjacentHTML('beforeend','<span class="vsep"></span>');
       const cav=document.createElement('div'); cav.className='seg'; cav.setAttribute('role','group'); cav.setAttribute('aria-label','Cavalry position'); cav.style.alignSelf='center';
       cav.innerHTML=`<button class="btn sm${f.cav!=='rear'?' on':''}" data-cav="wings">Horse on wings</button><button class="btn sm${f.cav==='rear'?' on':''}" data-cav="rear">Horse behind</button>`;
       cav.querySelectorAll('[data-cav]').forEach(b=>b.onclick=()=>{ pushUndo(); f.cav=b.dataset.cav; relayout(t); }); tools.appendChild(cav);
-      const sh=document.createElement('button'); sh.className='btn sm'; sh.style.alignSelf='center'; sh.textContent='Shuffle order'; sh.onclick=shuffleOrder; tools.appendChild(sh);
-      const rs=document.createElement('button'); rs.className='btn sm'; rs.style.alignSelf='center'; rs.textContent='Reset order'; rs.onclick=()=>{ pushUndo(); f.order=null; relayout(t); }; tools.appendChild(rs);
+
     }
   }
   refreshDeployUi();
@@ -1065,7 +1054,7 @@ function showResults(){
   else if(GAME.mode==='survival'){ title=mmss(GAME.survT); color='var(--brass-hi)'; sub='held before the wall fell.'; }
   else if(GAME.mode==='campaign'&&won&&GAME.level===CAMPAIGN_LEN){ title='The war is won'; color='var(--brass-hi)'; sub=`You won the last battle. All ${CAMPAIGN_LEN} battles of the campaign are yours.`; }
   else { title=won?'Victory':GAME.winner===1?'Defeat':'Stalemate'; color=won?'var(--brass-hi)':GAME.winner===1?'var(--red)':'var(--fg)'; sub=GAME.mode==='campaign'?`Battle ${GAME.level} · ${campaignLevel(GAME.level).name}`:GAME.title; }
-  const goldHtml=GAME.limited?`<div class="goldlines">${r.lines.map(([l,v])=>`<div><span>${l}</span><b>+${fmt(v)}</b></div>`).join('')}<div class="total"><span>Gold earned</span><b>+${fmt(r.total)}</b></div></div>${r.deserted?`<div class="desert">${fmt(r.deserted)} soldier${r.deserted===1?'':'s'} fled the field and deserted. They have left your roster.</div>`:''}`:'';
+  const goldHtml=GAME.limited?`<div class="goldlines">${r.lines.map(([l,v])=>`<div><span>${l}</span><b>+${fmt(v)}</b></div>`).join('')}<div class="total"><span>Gold earned</span><b>+${fmt(r.total)}</b></div></div>${r.deserted?`<div class="desert">${fmt(r.deserted)} soldier${r.deserted===1?'':'s'} ran off the field and deserted. They have left your roster.</div>`:''}<div class="hint" style="margin-top:6px">Your roster now: <b>${fmt(rosterTotal())}</b> soldiers. Every one of them, upgrades included, marches into the next battle; only deserters leave.</div>`:'';
   const [nextLabel,nextFn]=nextAction();
   let btns=`<button class="btn" id="rBattles">Battles</button>`+(GAME.limited?`<button class="btn" id="rCouncil">Council</button>`:'');
   if(GAME.mode==='campaign'&&!nextLabel.startsWith('Try')) btns+=`<button class="btn" id="rRetry">Replay battle ${GAME.level}</button>`;

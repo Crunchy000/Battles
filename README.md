@@ -1,6 +1,6 @@
 # Massive Armies
 
-A large-scale army battle game that runs in the browser on WebGPU. Paint thousands of geometric soldiers into formations, give each regiment its orders, and watch the armies collide.
+A large-scale army battle game that runs in the browser on WebGPU. Deploy thousands of geometric soldiers in formations, give each regiment its orders, and watch the armies collide.
 
 **Play:** https://crunchy000.github.io/Battles/
 
@@ -8,10 +8,10 @@ A large-scale army battle game that runs in the browser on WebGPU. Paint thousan
 
 - **19 unit types**: swordsmen, spearmen, shieldbearers, heavy infantry, berserkers, archers, crossbowmen, musketeers, light and heavy cavalry, lancers, catapults, ballistae, cannons, mortars, commanders, medics, engineers and champions, each with its own role and counters.
 - **Simulation**: every soldier is simulated individually, with formations, flanking and rear attacks, cavalry charges and bracing spears, projectile physics, morale and routing. Routed soldiers only rally beside a commander, and an army reduced to a tenth of its strength breaks. Spatial grids keep battles of 50,000+ soldiers running.
-- **Deployment**: pick a formation (Ranks, Battle line, Blocks, Wedge, Deep column) from icon buttons, set the front-to-back order of your unit types with the ordering strip (or shuffle it), and put cavalry on the wings or behind. In sandbox and custom battles an army builder sets how many of each unit type each side fields. Drag regiments to move them; Shift-drag or Shift-click selects several to move, turn or give orders to, during deployment or mid-battle. Undo, saved layouts and shareable layout codes.
+- **Deployment**: pick one of twelve formations from icon buttons: Ranks, Battle line, Shield wall, Hammer & anvil, Wedge, Deep column, Chequerboard, Crescent, Oblique, Square, Storm the gates and Skirmish screen. Each one brings its own front-to-back order of unit types and its own orders (for example the Shield wall holds, the Crescent's centre holds while its wings advance, Hammer & anvil holds the foot and sends the horse round the flanks). Fine-tune the order with the ordering strip and put cavalry on the wings or behind. Commanders and medics stand in small parties spread across the army and march beside the regiment nearest them. If ground is blocked, regiments slide to open ground rather than losing soldiers. In sandbox and custom battles an army builder sets how many of each unit type each side fields. Drag regiments to move them; Shift-drag or Shift-click selects several to move, turn or give orders to, during deployment or mid-battle. Undo, saved layouts and shareable layout codes.
 - **Battlefields**: grassland, hills, forest, river crossing, mountain pass, desert and a fortified wall, plus a map editor. Height, forests, water, walls and stakes all affect combat.
 - **Modes**: a 25-battle campaign ending in a 30,000-strong last battle, endless waves, survival behind a wall, sandbox and custom battles of up to 30,000 a side.
-- **Progression**: gold from kills and victories, recruiting, a six-branch tech tree, upgrades and army limits from 120 to 30,000. New units upgrade older ones in five lines (Swordsmen → Heavy Infantry → Champions, Archers → Crossbowmen → Musketeers, Light → Heavy Cavalry → Lancers, Catapults → Mortars, Ballistae → Cannons), so a developed army keeps a short list of types. Soldiers who flee the field desert and leave your roster.
+- **Progression**: gold from kills and victories, recruiting, a six-branch tech tree, upgrades and army limits from 120 to 30,000. New units upgrade older ones in five lines (Swordsmen → Heavy Infantry → Champions, Archers → Crossbowmen → Musketeers, Light → Heavy Cavalry → Lancers, Catapults → Mortars, Ballistae → Cannons), so a developed army keeps a short list of types. In the campaign, soldiers who run off the field desert and leave your roster; everyone else, upgrades included, carries on to the next battle.
 - **Sound**: synthesised in the browser and placed by distance from the camera.
 
 ## Controls
