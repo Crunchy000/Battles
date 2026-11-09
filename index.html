@@ -112,7 +112,8 @@ button{font:inherit;color:inherit}
 .ftile svg{width:26px;height:26px}
 .ftile span{font-family:var(--f-ui);font-size:11px;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
 .ftile:hover{color:var(--fg)}
-.fplan{flex:0 0 auto;align-self:center;display:flex;flex-direction:column;gap:2px;padding:0 8px;font-size:12px;color:var(--muted);max-width:240px}.fplan b{color:var(--brass-hi);font-family:var(--f-ui);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.fplan{flex:0 0 auto;align-self:center;display:flex;flex-direction:column;gap:2px;padding:0 8px;font-size:12px;color:var(--muted);max-width:240px}.fplan.wide{max-width:none;flex:1;min-width:0;padding:4px 2px}.fplan .fo{color:var(--fg);font-size:12.5px}
+.fplan b{color:var(--brass-hi);font-family:var(--f-ui);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
 .ftile.on{color:var(--brass-hi);border-color:var(--line);background:#24221a}
 .vsep{flex:0 0 1px;align-self:stretch;background:var(--line2);margin:4px 4px}
 .cchip{flex:0 0 auto;display:grid;grid-template-columns:auto auto auto;align-items:center;gap:2px 4px;border-radius:8px;border:1px solid var(--line2);background:var(--raise);padding:4px 6px;color:var(--blue)}
@@ -2648,7 +2649,7 @@ function progForm(){ if(PROG.formId&&FORM_BY[PROG.formId]) return PROG.formId; c
 function formOpt(team){ return GAME.mapId==='fortress'&&team===0&&GAME.mode!=='survival'?{gates:FORT_GATES.map(g=>g*MS)}:{}; }
 function playerLayout(T,saved,opt){
   const id=progForm();
-  return validateGroups(layoutFormation(0,autoCounts(),T,id,PROG.order||null,Object.assign({cav:PROG.cav||FORM_BY[id].cav},formOpt(0),opt||{})),T);
+  return validateGroups(layoutFormation(0,autoCounts(),T,id,null,Object.assign({cav:PROG.cav||FORM_BY[id].cav},formOpt(0),opt||{})),T);
 }
 function enterDeploy(cfg){
   closeModal(); hideCards(); $('#banner').hidden=true;
@@ -2661,7 +2662,7 @@ function enterDeploy(cfg){
   STT=[playerStats(),enemyStats(GAME.enemyUlv)];
   D.groups=[]; D.nextId=1; D.undo=[]; D.sel=-1; D.selObj.clear(); BSEL.clear(); D.team=GAME.editTeams[0]; D.terrain=false; D.stroke=null;
   D.fo=[{form:'ranks',order:null,cav:'wings'},{form:'ranks',order:null,cav:'wings'}];
-  if(GAME.limited){ const id=progForm(); D.fo[0]={form:id,order:PROG.order||null,cav:PROG.cav||FORM_BY[id].cav}; }
+  if(GAME.limited){ const id=progForm(); D.fo[0]={form:id,order:null,cav:PROG.cav||FORM_BY[id].cav}; }
   const gs=cfg.groups || (cfg.makeGroups?cfg.makeGroups(TER):[]);
   for(const g of gs) addDeployGroup(g);
   const av=availableTypes(); if(!av.includes(D.type)) D.type=av[0]||0;
@@ -3063,12 +3064,11 @@ function relayout(t){
   if(GAME.limited&&GAME.mode==='survival'&&t===0) gs=layoutSurvival(autoCounts(),TER);
   else { const f=D.fo[t]; gs=layoutFormation(t,teamCounts(t),TER,f.form,bandTypes(t),Object.assign({cav:f.cav},formOpt(t))); }
   gs=validateGroups(gs,TER); D.groups=D.groups.filter(g=>g.team!==t); gs.forEach(addDeployGroup);
-  if(GAME.limited&&t===0){ const f=D.fo[0]; PROG.formId=f.form; PROG.order=f.order; PROG.cav=f.cav; saveProg(); }
+  if(GAME.limited&&t===0){ const f=D.fo[0]; PROG.formId=f.form; PROG.order=null; PROG.cav=f.cav; saveProg(); }
   syncDeploy(); buildDeployDock();
 }
 // choosing a formation brings its own unit order, horse position and orders
 function setFormation(id){ const t=editTeam(), F=FORM_BY[id]; pushUndo(); Object.assign(D.fo[t],{form:id,order:null,cav:F.cav}); relayout(t); toast(`${F.name}: ${F.plan}`,1800); }
-function moveBand(id,dir){ const t=editTeam(), o=bandTypes(t), i=o.indexOf(id), j=i+dir; if(i<0||j<0||j>=o.length) return; [o[i],o[j]]=[o[j],o[i]]; pushUndo(); D.fo[t].order=o; D.type=UID[id]; relayout(t); }
 function setComp(t,ty,v){ pushUndo(); const c=D.comp[t]||(D.comp[t]=new Array(NT).fill(0)); const room=MAXU-2000-D.comp[t^1].reduce((a,b)=>a+b,0)-c.reduce((a,b,k)=>a+(k===ty?0:b),0); c[ty]=clamp(Math.round(v)||0,0,Math.max(0,room)); relayout(t); }
 function fillComp(t,style,total){ pushUndo(); D.comp[t]=armyCounts(clamp(total|0,0,30000),UNITS.map(u=>u.id),style,mulberry32((Math.random()*1e9)|0)); relayout(t); }
 function clearTeam(){ if(!GAME.limited){ pushUndo(); D.comp[D.team]=new Array(NT).fill(0); relayout(D.team); toast('Army cleared. Undo brings it back.'); return; } pushUndo(); D.groups=D.groups.filter(g=>g.team!==D.team||!GAME.editTeams.includes(g.team)); D.sel=-1; syncDeploy(); refreshDeployUi(); toast('Cleared. Undo brings them back.'); }
@@ -3116,14 +3116,8 @@ function buildDeployDock(){
     const t=editTeam(), o=bandTypes(t), c=teamCounts(t), red=t===1?' red':'';
     if(surv){ chips.innerHTML='<div class="hint" style="align-self:center">Survival deploys to hold the wall: infantry block the three gates and missile troops line the wall. Select regiments to move them or change their orders.</div>'; }
     else if(!o.length){ chips.innerHTML=`<div class="hint" style="align-self:center">${GAME.limited?'Recruit infantry or missile troops in the Council to arrange your ranks.':'Add soldiers above to build this army.'}</div>`; }
-    else { chips.insertAdjacentHTML('beforeend','<span class="strip-l">Front</span>');
-      o.forEach((id,k)=>{ const ty=UID[id], el=document.createElement('div'); el.className='otile'+red+(D.type===ty?' on':'');
-        el.innerHTML=`<span class="rk">${k+1}</span><button class="pick" aria-label="${UNITS[ty].name}, rank ${k+1}">${unitIcon(ty)}<span class="nm">${UNITS[ty].name}</span><span class="ct">${fmt(c[ty])}</span></button><div class="mv"><button aria-label="Move ${UNITS[ty].name} forward"${k===0?' disabled':''}>‹</button><button aria-label="Move ${UNITS[ty].name} back"${k===o.length-1?' disabled':''}>›</button></div>`;
-        el.querySelector('.pick').onclick=()=>{ D.type=ty; buildDeployDock(); };
-        const [f,b]=el.querySelectorAll('.mv button'); f.onclick=()=>moveBand(id,-1); b.onclick=()=>moveBand(id,1);
-        chips.appendChild(el); });
-      chips.insertAdjacentHTML('beforeend','<span class="strip-l">Back</span>'); }
-    if(!surv&&!D.terrain){ const F=FORM_BY[D.fo[t].form]||FORMATIONS[0]; chips.insertAdjacentHTML('beforeend',`<div class="fplan" title="${esc(F.desc)}"><b>${F.name}</b><span>Orders: ${F.plan}</span><span>${D.fo[t].order?'Your own order of ranks':'Ranks in the formation’s order'}</span></div>`); }
+    else { const F=FORM_BY[D.fo[t].form]||FORMATIONS[0];
+      chips.insertAdjacentHTML('beforeend',`<div class="fplan wide" title="${esc(F.desc)}"><b>${F.name}</b><span>${esc(F.desc)}</span><span class="fo">Orders: ${F.plan} · Front to back: ${o.map(id=>UNITS[UID[id]].name).join(' → ')}</span></div>`); }
     // army builder for sandbox and custom battles
     if(!GAME.limited){ const comp=$('#comp'); comp.innerHTML='';
       const fill=document.createElement('div'); fill.className='fill';
