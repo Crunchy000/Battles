@@ -1078,14 +1078,43 @@ $('#btnCouncil').onclick=()=>showCouncil('recruit');
 const SND_ON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor" stroke="none"/><path d="M15.5 9a4.2 4.2 0 0 1 0 6M18.2 6.5a8 8 0 0 1 0 11"/></svg>';
 const SND_OFF='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor" stroke="none"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>';
 function renderSoundBtn(){ const b=$('#btnSound'); b.innerHTML=AUD.on?SND_ON:SND_OFF; b.classList.toggle('muted',!AUD.on); b.setAttribute('aria-label',AUD.on?'Sound on. Open sound settings':'Sound off. Open sound settings'); if(!$('#soundPop').hidden) renderSoundPop(); }
+/* ---------- sound board: every sound in the game, what plays it and where it comes from ---------- */
+const SOUND_BOARD=[
+  ['Melee',[['clang','Sword clash','Melee blows landing'],['wood','Shield block','A blow stopped by a shield'],['punch','Soldier falls','Every kill'],['thud','Heavy thud','Cavalry charges, boulders landing and bouncing']]],
+  ['Missiles and siege',[['whoosh','Arrow volley','Archers loosing together near the camera'],['struck','Missile hit','Arrows, bolts and shot striking a soldier'],['xbow','Crossbow','Each crossbow shot'],['musket','Musket','Each musket shot'],['woodH','Catapult','A catapult arm slamming forward'],['ballista','Ballista','Each ballista bolt'],['cannon','Cannon and mortar','Each gun firing'],['blast','Exploding shell','Mortar shells bursting']]],
+  ['Battle cues',[['drum','War drum','The start of a battle and each wave'],['hornAdvance','Advance horn','A battle starting'],['hornWave','Wave horn','A new wave in Endless'],['hornDefeat','Defeat horn','Losing a battle'],['fanfare','Victory fanfare','Winning a battle']]],
+  ['Interface',[['coin','Coins','Recruiting, research and gold rewards'],['tick','Click','Buttons'],['place','Place','Dropping a regiment in deployment']]],
+  ['Ambience (loops)',[['loopDin','Melee roar','Rises with the fighting near the camera'],['loopHoof','Hooves','Cavalry on the move'],['loopMarch','Marching','Infantry on the move'],['loopWind','Wind','Always there, louder zoomed out']]],
+];
+const SB_PLAYING=new Set();
+const sbList=k=>{ const b=AUD.B[k]; return !b?null:Array.isArray(b)?b:[b]; };
+function sbSource(k){ const n=typeof SFX_DATA!=='undefined'&&SFX_DATA.names[k]; if(!n) return 'Synthesised in the browser';
+  const base=n.map(f=>f.replace(/\.ogg$/,'')), stem=base[0].replace(/_?\d+$/,''), same=base.every(b=>b.replace(/_?\d+$/,'')===stem);
+  return 'Kenney (CC0): '+(same&&base.length>1?`${stem} ×${base.length}`:base.join(', ')); }
+function sbPlay(k,i){ audUnlock(); if(!audLive()){ toast('Sounds are still loading. Try again in a moment.'); return; }
+  const list=sbList(k); if(!list) return; const loop=k.startsWith('loop'), src=audPlay(i>=0?[list[i]]:list,loop?0.6:0.7,0,1,0,loop?0:0.1,0,loop?AUD.bus.amb:AUD.bus.sfx);
+  if(src){ SB_PLAYING.add(src); src.addEventListener('ended',()=>SB_PLAYING.delete(src)); } }
+function showSoundBoard(){
+  audUnlock();
+  const rows=SOUND_BOARD.map(([sec,items])=>`<h3 class="sb-h">${sec}</h3><div class="list">${items.map(([k,name,when])=>{ const n=(sbList(k)||[]).length||((typeof SFX_DATA!=='undefined'&&SFX_DATA.files[k])||[]).length||1;
+    return `<div class="sb-row"><button class="btn sm sb-play" data-k="${k}" data-i="-1" aria-label="Play ${name}">▶</button><div style="min-width:0"><div class="t">${name}</div><div class="m">${when} · <span class="src">${esc(sbSource(k))}</span></div></div>
+    <div class="sb-v">${n>1?Array.from({length:n},(_,i)=>`<button class="btn sm" data-k="${k}" data-i="${i}" aria-label="${name}, variant ${i+1}">${i+1}</button>`).join(''):''}</div></div>`; }).join('')}</div>`).join('');
+  openModal(`<div class="sheet-h"><h2>Sound board</h2><button class="x" id="sbX" aria-label="Close">×</button></div>
+    <p class="lede">Every sound in the game. ▶ plays a random take, the numbers play each variant. In battle each sound plays at its natural pitch, quieter and more muffled with distance from the camera.</p>
+    <div class="actions" style="justify-content:flex-start;margin:0 0 6px"><button class="btn sm" id="sbStop">Stop all</button></div>${rows}`,s=>{
+    $('#sbX').onclick=closeModal;
+    $('#sbStop').onclick=()=>{ for(const src of SB_PLAYING){ try{ src.stop(); }catch(e){} } SB_PLAYING.clear(); };
+    s.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>sbPlay(b.dataset.k,+b.dataset.i)); });
+}
 function renderSoundPop(){
   const p=$('#soundPop');
   p.innerHTML=`<h4>Sound<button class="x" id="sdX" aria-label="Close">×</button></h4>
   <div class="row"><div class="seg" role="group" aria-label="Sound"><button class="btn sm${AUD.on?' on':''}" id="sdOn">On</button><button class="btn sm${AUD.on?'':' on'}" id="sdOff">Off</button></div></div>
   <label class="slider"><span>Volume</span><input type="range" id="sdVol" min="0" max="100" step="1" value="${Math.round(AUD.vol*100)}"><output>${Math.round(AUD.vol*100)}%</output></label>
   <label class="slider"><span>Ambience</span><input type="range" id="sdAmb" min="0" max="100" step="1" value="${Math.round(AUD.amb*100)}"><output>${Math.round(AUD.amb*100)}%</output></label>
-  <div class="row"><button class="btn sm" id="sdTest">Test sounds</button></div>
+  <div class="row"><button class="btn sm" id="sdBoard">Sound board</button><button class="btn sm" id="sdTest">Quick test</button></div>
   <div class="hint">Impact and interface sounds from Kenney's free CC0 packs (kenney.nl). Ambience is the roar of the melee, hooves, marching feet and wind. Press M to mute.</div>`;
+  $('#sdBoard').onclick=()=>{ closePops(); showSoundBoard(); };
   $('#sdTest').onclick=()=>{ if(!AUD.on){ audSetOn(true); renderSoundBtn(); } audPreview(); };
   $('#sdX').onclick=closePops;
   $('#sdOn').onclick=()=>{ audSetOn(true); renderSoundBtn(); };
@@ -1098,7 +1127,7 @@ if(window.AudioContext||window.webkitAudioContext){ $('#btnSound').hidden=false;
 $('#btnSound').onclick=()=>{ const p=$('#soundPop'), show=p.hidden; closePops(); if(show){ renderSoundPop(); p.hidden=false; } };
 // interface sounds: coins for purchases, a soft tick for other buttons
 document.addEventListener('click',e=>{ const t=e.target.closest&&e.target.closest('button'); if(!t||t.disabled) return;
-  if(t.closest('[data-buy],[data-tech],[data-upg]')) audUi('coin',0.6); else if(t.id!=='sdOn') audUi('tick',0.3); },true);
+  if(t.closest('[data-buy],[data-tech],[data-upg]')) audUi('coin',0.6); else if(t.id!=='sdOn'&&!t.closest('[data-k],#sbStop')) audUi('tick',0.3); },true);
 $('#btnBattles').onclick=()=>showBattles(GAME.mode==='endless'?'endless':GAME.mode==='survival'?'survival':GAME.mode==='sandbox'?'sandbox':GAME.mode==='custom'?'custom':'campaign');
 
 /* ---------- renderer setup + loop ---------- */

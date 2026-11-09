@@ -231,7 +231,7 @@ function audPlay(list,g,pan,rate,lp,wet,delay,bus){
   out.connect(bus||AUD.bus.sfx);
   if(wet>0&&AUD.bus.wet){ const w=c.createGain(); w.gain.value=wet; gn.connect(w); w.connect(AUD.bus.wet); nodes.push(w); }
   AUD.voices++; s.onended=()=>{ AUD.voices--; for(const n of nodes) n.disconnect(); };
-  s.start(c.currentTime+(delay||0));
+  s.start(c.currentTime+(delay||0)); return s;
 }
 const audUi=(name,g,rate)=>audPlay(AUD.B[name],g,0,rate||1,0,0,0,AUD.bus.ui);
 const audMusic=(name,g,delay)=>audPlay(AUD.B[name],g,0,1,0,0.25,delay||0,AUD.bus.mus);

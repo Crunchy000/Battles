@@ -188,6 +188,12 @@ table.cas td .uicon{width:16px;height:16px}
 .tab.on{color:var(--brass-hi);border-bottom-color:var(--brass)}
 .lede{margin:0;color:var(--muted);font-size:15px;line-height:1.5;max-width:62ch}
 .list{display:flex;flex-direction:column;gap:6px}
+.sb-h{font-family:var(--f-ui);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
+.sb-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:8px 12px;border:1px solid var(--line2);border-radius:10px;background:var(--raise)}
+.sb-row .t{font-family:var(--f-ui);font-weight:600;font-size:15px;letter-spacing:.03em}
+.sb-row .m{font-size:12.5px;color:var(--muted);margin-top:2px}.sb-row .src{color:var(--dim)}
+.sb-play{min-width:38px;font-size:14px}.sb-v{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}.sb-v .btn{min-width:30px;padding:0 6px}
+@media (max-width:560px){.sb-row{grid-template-columns:auto 1fr}.sb-v{grid-column:1/-1;justify-content:flex-start}}
 .lrow{display:grid;grid-template-columns:42px 1fr auto;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line2);border-radius:10px;background:var(--raise)}
 .lrow.locked{opacity:.5}
 .lrow .no{font-family:var(--f-display);font-weight:800;font-size:24px;color:var(--brass);text-align:center;font-variant-numeric:tabular-nums}
