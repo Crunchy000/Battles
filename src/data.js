@@ -413,6 +413,66 @@ function layoutSurvival(counts,T){
   for(const g of groups){ const keep=[]; for(let k=0;k<g.slots.length;k+=3){ const [x,z]=localToWorld(g,g.slots[k],g.slots[k+1]); if(passAtT(T,x,z) && x<wx-1.5 && x>X0+2 && z>Z0+2 && z<Z1-2) keep.push(g.slots[k],g.slots[k+1],g.slots[k+2]); } g.slots=keep; }
   return groups.filter(g=>g.slots.length);
 }
+/* ---------- player formations: compact shapes the Auto button cycles through ---------- */
+const FORMATIONS=[{id:'ranks',name:'Ranks'},{id:'line',name:'Battle line'},{id:'blocks',name:'Blocks'},{id:'wedge',name:'Wedge'},{id:'column',name:'Deep column'}];
+// default front-to-back order of the bands (cavalry ride on the wings, siege stands at the rear)
+const BAND_ORDER=['shield','heavy','elite','sword','bers','spear','xbow','archer','musket'];
+function layoutFormation(team,counts,T,form,order,opt={}){
+  const dir=team===0?1:-1, face=team===0?0:Math.PI;
+  const front=(team===0?-34:34)-dir*(opt.back||0);
+  // centre on the widest open run of ground near the front
+  const probeX=front-dir*6; let bestA=-80,bestB=80,runA=null,bestLen=0;
+  for(let z=Z0+4; z<=Z1-4; z+=2){ const ok=passAtT(T,probeX,z)&&passAtT(T,probeX-dir*20,z); if(ok){ if(runA===null) runA=z; if(z-runA>bestLen){ bestLen=z-runA; bestA=runA; bestB=z; } } else runA=null; }
+  const zc=(bestA+bestB)/2, Wmax=Math.max(20,(bestB-bestA)*0.9);
+  const groups=[]; const mk=(t,cx,cz,slots)=>{ if(slots.length) groups.push({team,type:t,order:defaultOrder(t),cx,cz,a:face,slots}); };
+  const has=t=>t!==undefined&&counts[t]>0;
+  // combat bands in the requested order, then any present type the order left out
+  let bands=(order&&order.length?order:BAND_ORDER).map(id=>UID[id]).filter(t=>has(t)&&UNITS[t].cls!=='cav'&&UNITS[t].cls!=='sie'&&UNITS[t].cls!=='sup');
+  UNITS.forEach((u,t)=>{ if(has(t)&&(u.cls==='inf'||u.cls==='rng')&&!bands.includes(t)) bands.push(t); });
+  const sup=['cmdr','medic'].map(id=>UID[id]).filter(has), eng=UID.eng;
+  const cav=UNITS.map((u,t)=>t).filter(t=>has(t)&&UNITS[t].cls==='cav'), sie=UNITS.map((u,t)=>t).filter(t=>has(t)&&UNITS[t].cls==='sie');
+  let area=0; for(const t of bands) area+=counts[t]*UNITS[t].sp**2;
+  const aspect={ranks:3.2,line:7,blocks:2.4,wedge:2.2,column:0.9}[form]||3.2;
+  const W=clamp(Math.sqrt(Math.max(area,1)*aspect),18,Wmax);
+  let depth=0;
+  // a band of one type across `width`, centred on z, starting `depth` metres behind the front
+  const band=(t,n,width,z,dd)=>{ const sp=UNITS[t].sp, cols=Math.max(1,Math.min(n,Math.floor(width/sp))), rows=Math.ceil(n/cols); mk(t, front-dir*(dd+rows*sp/2), z, fmRect(cols,rows,sp,n)); return rows*sp; };
+  const supRow=()=>{ for(const t of sup){ const n=counts[t], sp=Math.max(1.6,Math.min(6,W/n)); depth+=band(t,n,Math.min(W,n*sp),zc,depth)+0.8; } };
+  if(has(eng)){ const n=counts[eng], sp=Math.max(2,Math.min(8,W/n)); mk(eng, front+dir*2, zc, fmRect(n,1,sp,n)); }
+  if(form==='line'){
+    // melee side by side in one wide line, missile troops side by side behind it, everyone the same depth
+    const tiers=[bands.filter(t=>UNITS[t].cls!=='rng'), bands.filter(t=>UNITS[t].cls==='rng')];
+    for(const tier of tiers){ if(!tier.length) continue; let ta=0; for(const t of tier) ta+=counts[t]*UNITS[t].sp**2; const dd=ta/W; let z=zc-W/2, maxD=0;
+      for(const t of tier){ const w=W*counts[t]*UNITS[t].sp**2/ta; maxD=Math.max(maxD,band(t,counts[t],Math.max(w-1,UNITS[t].sp),z+w/2,depth)); z+=w; }
+      depth+=maxD+1.5; if(tier===tiers[0]) supRow(); }
+  } else if(form==='blocks'){
+    // square blocks in a chequerboard, alternate rows offset by half a block
+    const bw=Math.max(8,W/4), cells=[]; for(const t of bands){ let n=counts[t]; const per=Math.max(1,Math.round((bw/UNITS[t].sp)**2)); while(n>0){ const k=Math.min(n,per); cells.push([t,k]); n-=k; } }
+    const perRow=Math.max(2,Math.floor(W/(bw*1.35))); let row=0;
+    for(let i=0;i<cells.length;i+=perRow){ const rowCells=cells.slice(i,i+perRow), off=(row%2)*bw*0.65, rw=rowCells.length*bw*1.35; let z=zc-rw/2+bw*0.675+off-(row%2?bw*0.33:0), maxD=0;
+      for(const [t,k] of rowCells){ maxD=Math.max(maxD,band(t,k,bw,z,depth)); z+=bw*1.35; }
+      depth+=maxD+2; row++; if(row===1) supRow(); }
+  } else if(form==='wedge'){
+    // the front band is narrow and each band behind widens
+    bands.forEach((t,k)=>{ const w=W*Math.min(1,0.35+0.3*k); depth+=band(t,counts[t],w,zc,depth)+1.2; if(k===0) supRow(); });
+  } else {
+    // ranks and deep column: each type a full band, one behind another
+    const w=form==='column'?W*0.55:W;
+    bands.forEach((t,k)=>{ depth+=band(t,counts[t],w,zc,depth)+1.2; if(k===0) supRow(); });
+  }
+  if(!bands.length) supRow();
+  // cavalry on both wings, level with the front
+  let wingZ=[zc-W/2-3,zc+W/2+3];
+  cav.forEach((t,k)=>{ const n=counts[t], halves=[Math.ceil(n/2),Math.floor(n/2)], sp=UNITS[t].sp;
+    halves.forEach((h,side)=>{ if(!h) return; const cols=Math.max(2,Math.min(10,Math.ceil(Math.sqrt(h/2)))), rows=Math.ceil(h/cols), w=cols*sp, s=side?1:-1;
+      const z=wingZ[side]+s*w/2; mk(t, front-dir*(rows*sp/2), z, fmRect(cols,rows,sp,h)); wingZ[side]+=s*(w+2); }); });
+  // siege at the rear
+  if(sie.length){ depth+=6; let n=0; sie.forEach(t=>n+=counts[t]); const sw=Math.min(W,n*5); let z=zc-sw/2;
+    for(const t of sie){ const k=counts[t], cols=Math.max(1,Math.min(k,Math.floor(sw/5))), rows=Math.ceil(k/cols), w=Math.min(k,cols)*5; mk(t, front-dir*(depth+rows*2.5), z+w/2, fmRect(Math.min(k,cols),rows,5,k)); z+=w; } }
+  const zone=ZONES[team];
+  for(const g of groups){ const keep=[]; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(passAtT(T,wx,wz)&&wx>=zone[0]&&wx<=zone[1]&&wz>Z0+2&&wz<Z1-2) keep.push(g.slots[k],g.slots[k+1],g.slots[k+2]); } g.slots=keep; }
+  return groups.filter(g=>g.slots.length);
+}
 function defaultOrder(type){ const c=UNITS[type].cls; return c==='cav'?'flank':'advance'; }
 function passAtT(T,x,z){ if(x<X0||x>=X1||z<Z0||z>=Z1) return false; const i=((x-X0)/TC)|0, j=((z-Z0)/TC)|0; return PASSK[T.k[j*TW+i]]===1; }
 

@@ -25,6 +25,7 @@ body{font-family:var(--f-body);-webkit-tap-highlight-color:transparent;overscrol
 button{font:inherit;color:inherit}
 #stage{position:fixed;inset:0;touch-action:none;user-select:none;-webkit-user-select:none;background:var(--ink)}
 #stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#stage #ov{pointer-events:none}
 .hudtext{font-family:var(--f-ui);letter-spacing:.04em}
 
 /* ---------- buttons ---------- */
@@ -226,6 +227,7 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:12px;min-height:72px
 <div id="stage">
   <canvas id="gl"></canvas>
   <canvas id="c2d" hidden></canvas>
+  <canvas id="ov" aria-hidden="true"></canvas>
 </div>
 
 <header class="topbar">
@@ -259,7 +261,8 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:12px;min-height:72px
       <div class="spacer"></div>
       <button class="btn sm" id="btnResearch" title="Open the tech tree (T)" hidden>Research</button>
       <button class="btn sm" id="btnUndo" title="Undo">Undo</button>
-      <button class="btn sm" id="btnAuto">Auto</button>
+      <button class="btn sm" id="btnAuto" title="Lay out your army automatically. Click again for the next formation.">Formation</button>
+      <button class="btn sm" id="btnShuffle" title="Change which unit types stand at the front">Shuffle</button>
       <button class="btn sm" id="btnSaves">Saves</button>
       <button class="btn sm danger" id="btnClear">Clear</button>
       <button class="btn primary fight" id="btnFight">Fight</button>
@@ -282,8 +285,20 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:12px;min-height:72px
         <button class="btn sm" data-cam="close">Follow</button>
       </div>
       <div class="spacer"></div>
+      <button class="btn sm" id="btnBSel" title="Drag a box to select regiments and change their orders (or Shift-drag)">Select</button>
       <button class="btn sm" id="btnStats">Casualties</button>
       <button class="btn sm danger" id="btnEnd">Withdraw</button>
+    </div>
+  </div>
+</section>
+
+<section class="dock" id="resultDock" hidden>
+  <div class="dock-in">
+    <div class="row wrap">
+      <button class="btn sm" id="btnResults">Results</button>
+      <button class="btn sm" id="btnRCouncil">Council</button>
+      <div class="spacer"></div>
+      <button class="btn primary fight" id="btnNext">Next battle</button>
     </div>
   </div>
 </section>

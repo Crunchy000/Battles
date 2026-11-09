@@ -288,19 +288,19 @@ const INST=new Float32Array(MAXU*16);
 const PINST=new Float32Array(MAXP*8);
 const QINST=new Float32Array(MAXQ*8);
 const bucketCount=new Int32Array(NT*2), bucketOff=new Int32Array(NT*2), bucketOf=new Uint8Array(MAXU);
-const VIEW={alpha:1, hlGroup:-1, hlUnit:-1, zones:[null,null], time:0};
+const VIEW={alpha:1, hlGroup:-1, hlMask:null, hlUnit:-1, zones:[null,null], time:0};
 function buildUnitInstances(){
   bucketCount.fill(0);
   const ex=CAM.eye[0], ez=CAM.eye[2], lod2=Math.pow(Math.max(60,CAM.dist*0.55),2);
   for(let i=0;i<N;i++){ if(SS[i]===3){ bucketOf[i]=255; continue; } const dx=PX[i]-ex, dz=PZ[i]-ez; const b=TY[i]*2+((dx*dx+dz*dz>lod2)?1:0); bucketOf[i]=b; bucketCount[b]++; }
   let s=0; for(let b=0;b<NT*2;b++){ bucketOff[b]=s; s+=bucketCount[b]; }
-  const total=s, cur=bucketOff.slice(), a=VIEW.alpha, hg=VIEW.hlGroup, hu=VIEW.hlUnit;
+  const total=s, cur=bucketOff.slice(), a=VIEW.alpha, hm=VIEW.hlMask, hml=hm?hm.length:0, hu=VIEW.hlUnit;
   for(let i=0;i<N;i++){
     const b=bucketOf[i]; if(b===255) continue;
     const o=(cur[b]++)*16, ty=TY[i], u=UNITS[ty];
     INST[o]=OX[i]+(PX[i]-OX[i])*a; INST[o+2]=OZ[i]+(PZ[i]-OZ[i])*a; INST[o+1]=PY[i]; INST[o+3]=FA[i];
     INST[o+4]=TM[i]; INST[o+5]=SS[i]===0?0:Math.min(1,Math.hypot(VX[i],VZ[i])/2.5); INST[o+6]=AT[i]; INST[o+7]=SS[i]===0?DE[i]:0;
-    INST[o+8]=FL[i]; INST[o+9]=u.scale; INST[o+10]=(GR[i]===hg||i===hu)?1:0; INST[o+11]=(i*1.618)%6.283;
+    INST[o+8]=FL[i]; INST[o+9]=u.scale; INST[o+10]=((GR[i]<hml&&hm[GR[i]])||i===hu)?1:0; INST[o+11]=(i*1.618)%6.283;
     INST[o+12]=u.foot; INST[o+13]=SS[i]===2?1:0; INST[o+14]=0; INST[o+15]=0;
   }
   return total;
@@ -557,7 +557,7 @@ function r2dFrame(canvas){
       const st=SS[i]; if(st===3) continue; if((st===0)!==(pass===0)) continue;
       const x=OX[i]+(PX[i]-OX[i])*a, z=OZ[i]+(PZ[i]-OZ[i])*a; const p=toS(x,z); if(p[0]<-10||p[1]<-10||p[0]>W+10||p[1]>H+10) continue;
       const u=UNITS[TY[i]], r=sz*u.foot*1.4;
-      ctx.fillStyle= st===0 ? 'rgba(40,36,30,0.35)' : (FL[i]>0.5?'#fff':(GR[i]===VIEW.hlGroup||i===VIEW.hlUnit)?cols[TM[i]][2]:cols[TM[i]][st===2?1:0]);
+      ctx.fillStyle= st===0 ? 'rgba(40,36,30,0.35)' : (FL[i]>0.5?'#fff':((VIEW.hlMask&&GR[i]<VIEW.hlMask.length&&VIEW.hlMask[GR[i]])||i===VIEW.hlUnit)?cols[TM[i]][2]:cols[TM[i]][st===2?1:0]);
       if(s>5 && st!==0){ ctx.beginPath(); if(u.cls==='rng'){ ctx.moveTo(p[0],p[1]-r); ctx.lineTo(p[0]+r,p[1]+r); ctx.lineTo(p[0]-r,p[1]+r); } else if(u.cls==='cav'){ ctx.ellipse(p[0],p[1],r*1.2,r*0.7,FA[i]-CAM.yaw,0,TAU); } else if(u.cls==='sie'){ ctx.rect(p[0]-r,p[1]-r,r*2,r*2); } else ctx.arc(p[0],p[1],r,0,TAU); ctx.fill(); }
       else ctx.fillRect(p[0]-r,p[1]-r,r*2,r*2);
     }

@@ -62,7 +62,7 @@ const GAME={mode:'demo',phase:'battle',level:0,mapId:'hills',seed:1,mapOpt:{},sp
   demoCycle:0,terrainDirty:false,terrainT:0,terBackup:null,
   custom:{map:'grassland',blue:1500,red:1500,bs:'balanced',rs:'balanced',dist:'normal',morale:true,rain:false}};
 let RENDER='gpu';
-const D={groups:[],nextId:1,tool:'brush',type:0,size:5,density:1,ranks:4,rot:0,team:0,sel:-1,stroke:null,undo:[],terrain:false,ttool:'raise',collapsed:false};
+const D={selObj:new Set(),form:0,order:null,groups:[],nextId:1,tool:'brush',type:0,size:5,density:1,ranks:4,rot:0,team:0,sel:-1,stroke:null,undo:[],terrain:false,ttool:'raise',collapsed:false};
 
 /* ---------- unit + tool icons ---------- */
 const ICON_PATHS={
@@ -101,7 +101,7 @@ const TOOL_ICONS={
 };
 const toolIcon=id=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TOOL_ICONS[id]}</svg>`;
 const TOOLS=[['brush','Brush'],['line','Line'],['rect','Block'],['square','Square'],['column','Column'],['wedge','Wedge'],['select','Select'],['erase','Erase'],['pan','Camera']];
-const TOOL_HELP={brush:'Paint soldiers on a grid. Each stroke becomes one regiment. With none in reserve, painting moves soldiers from your other regiments of that type.',line:'Drag a front line. Ranks stack behind it, facing the enemy.',rect:'Drag a block filled with soldiers.',square:'Drag out a hollow square. Every side faces outward.',column:'Drag a marching column in the direction it should face.',wedge:'Drag from the rear to the tip of a wedge.',select:'Tap a regiment to select it, then drag to move.',erase:'Drag to remove soldiers.',pan:'Drag to move the camera. Tap a regiment to select it.'};
+const TOOL_HELP={brush:'Paint soldiers on a grid. A stroke that starts on a regiment of the same type adds to it; anywhere else it starts a new regiment. With none in reserve, painting moves soldiers from your other regiments of that type.',line:'Drag a front line. Ranks stack behind it, facing the enemy.',rect:'Drag a block filled with soldiers.',square:'Drag out a hollow square. Every side faces outward.',column:'Drag a marching column in the direction it should face.',wedge:'Drag from the rear to the tip of a wedge.',select:'Tap a regiment to select it. Shift-tap adds more, or drag a box over several. Drag any selected regiment to move them all.',erase:'Drag to remove soldiers.',pan:'Drag to move the camera. Tap a regiment to select it.'};
 const SHAPE_TOOLS=new Set(['line','rect','square','column','wedge']);
 const TERRAIN_TOOLS=[['raise','Raise','#8a9a6a'],['lower','Lower','#4d5a3c'],['flatten','Flatten','#6f7f55'],['grass','Grass','#668c48'],['forest','Forest','#3b5c30'],['water','River','#2a5a6c'],['ford','Ford','#5d7c80'],['rock','Cliff','#7d7a74'],['sand','Sand','#d2b47a'],['wall','Wall','#9a958a'],['road','Road','#9c8b68']];
 const ORDER_HELP=['March on the enemy and engage.','Stay in place and fight anything that comes close.','Swing wide around the enemy line and strike a flank.','Run straight in at full speed, ignoring formation.'];
@@ -115,14 +115,15 @@ function openModal(html,onMount){ const m=$('#modal'), s=$('#sheet'); $('#toast'
 function closeModal(){ $('#modal').hidden=true; }
 function closePops(){ $('#brushPop').hidden=true; $('#savePop').hidden=true; $('#soundPop').hidden=true; }
 function hideCards(){ $('#inspect').hidden=true; $('#groupPanel').hidden=true; $('#statsPanel').hidden=true; closePops(); VIEW.hlUnit=-1; }
-$('#modal').addEventListener('pointerdown',e=>{ if(e.target.id==='modal' && GAME.phase!=='result') closeModal(); });
+$('#modal').addEventListener('pointerdown',e=>{ if(e.target.id==='modal') closeModal(); });
 function showDock(which){
-  $('#deployDock').hidden=which!=='deploy'; $('#battleDock').hidden=which!=='battle';
+  $('#deployDock').hidden=which!=='deploy'; $('#battleDock').hidden=which!=='battle'; $('#resultDock').hidden=which!=='result';
   requestAnimationFrame(measureDock);
 }
-function measureDock(){ document.documentElement.style.setProperty('--top-h',$('.topbar').offsetHeight+'px'); const d=!$('#deployDock').hidden?$('#deployDock'):(!$('#battleDock').hidden?$('#battleDock'):null); document.documentElement.style.setProperty('--dock-h',(d?d.offsetHeight:0)+'px'); }
+function measureDock(){ document.documentElement.style.setProperty('--top-h',$('.topbar').offsetHeight+'px'); const d=['#deployDock','#battleDock','#resultDock'].map(q=>$(q)).find(e=>!e.hidden)||null; document.documentElement.style.setProperty('--dock-h',(d?d.offsetHeight:0)+'px'); }
 new ResizeObserver(measureDock).observe($('#deployDock'));
 new ResizeObserver(measureDock).observe($('#battleDock'));
+new ResizeObserver(measureDock).observe($('#resultDock'));
 new ResizeObserver(measureDock).observe($('.topbar'));
 
 /* ---------- terrain refresh ---------- */
@@ -158,19 +159,20 @@ function playerLayout(T,saved,opt){
   const zoneSaved=deserializeGroups(saved,0);
   let gs=trimToRoster(validateGroups(zoneSaved,T));
   const n=gs.reduce((a,g)=>a+g.slots.length/3,0);
-  if(!saved || n < Math.min(rosterTotal(),capOf())*0.5){ gs=validateGroups(layoutArmy(0,autoCounts(),T,opt||{}),T); }
+  if(!saved || n < Math.min(rosterTotal(),capOf())*0.5){ gs=validateGroups(layoutFormation(0,autoCounts(),T,FORMATIONS[(PROG.form|0)%FORMATIONS.length].id,PROG.order,opt||{}),T); }
   return gs;
 }
 function enterDeploy(cfg){
   closeModal(); hideCards(); $('#banner').hidden=true;
   Object.assign(GAME,{mode:cfg.mode,phase:'deploy',level:cfg.level||0,limited:!!cfg.limited,editTeams:cfg.editTeams||[0],rules:Object.assign({morale:true,rain:false},cfg.rules||{}),
-    zones:cfg.zones||[null,null],enemyUlv:cfg.ulv||0,title:cfg.title||'',ended:false,endTimer:-1,gold:0,wave:0,waveTimer:-1,survT:0,spawnT:4,settled:null,winner:-1,base0:0,deadAt:[]});
+    zones:cfg.zones||[null,null],enemyUlv:cfg.ulv||0,title:cfg.title||'',ended:false,endTimer:-1,gold:0,coinPlayed:false,wave:0,waveTimer:-1,survT:0,spawnT:4,settled:null,winner:-1,base0:0,deadAt:[]});
   resetBattle();
   if(!cfg.keepTerrain){ GAME.mapId=cfg.mapId; GAME.seed=cfg.seed; GAME.mapOpt=cfg.mapOpt||{}; TER=genMap(cfg.mapId,cfg.seed,cfg.mapOpt||{}); }
   else if(GAME.terBackup){ TER.k.set(GAME.terBackup.k); TER.own.fill(-1); }
   onTerrainChanged();
   STT=[playerStats(),enemyStats(GAME.enemyUlv)];
-  D.groups=[]; D.nextId=1; D.undo=[]; D.sel=-1; D.team=GAME.editTeams[0]; D.terrain=false; D.stroke=null;
+  D.groups=[]; D.nextId=1; D.undo=[]; D.sel=-1; D.selObj.clear(); BSEL.clear(); D.team=GAME.editTeams[0]; D.terrain=false; D.stroke=null;
+  if(GAME.limited){ D.form=(PROG.form|0)%FORMATIONS.length; D.order=PROG.order||null; }
   const gs=cfg.groups || (cfg.makeGroups?cfg.makeGroups(TER):[]);
   for(const g of gs) addDeployGroup(g);
   const av=availableTypes(); if(!av.includes(D.type)) D.type=av[0]||0;
@@ -186,7 +188,7 @@ function syncDeploy(){
   for(let gi=0;gi<D.groups.length;gi++){ const g=D.groups[gi], ca=Math.cos(g.a), sa=Math.sin(g.a);
     for(let k=0;k<g.slots.length;k+=3){ if(N>=MAXU) break; const lx=g.slots[k], lz=g.slots[k+1];
       initUnit(N,g.team,g.type,g.cx+sa*lx+ca*lz,g.cz-ca*lx+sa*lz,g.a+g.slots[k+2],gi,lx,lz,g.slots[k+2]); N++; } }
-  VIEW.hlGroup=D.sel;
+  refreshHighlight();
 }
 const campaignDone=()=>!!PROG.won[CAMPAIGN_LEN];
 function openCampaign(L){
@@ -245,7 +247,7 @@ function startBattle(silent){
   GAME.phase='battle'; GAME.ended=false; GAME.gold=0; GAME.endTimer=-1;
   if(GAME.mode==='endless'){ GAME.wave=1; GAME.deadAt=Array.from(B.deadT[0]); spawnEndlessWave(); }
   if(GAME.mode==='survival'){ GAME.survT=0; GAME.spawnT=1; B.noHunt=true; }
-  VIEW.zones=[null,null]; D.sel=-1; VIEW.hlGroup=-1; D.terrain=false;
+  VIEW.zones=[null,null]; D.sel=-1; D.selObj.clear(); BSEL.clear(); VIEW.hlMask=null; D.terrain=false;
   hideCards(); showDock('battle'); setSpeed(GAME.speed||1); updateHud(true);
   $('#btnEnd').textContent=GAME.limited?'Withdraw':'End';
   if(!silent){ banner('Advance!','var(--brass-hi)',1200); audBattleStart(); }
@@ -304,6 +306,7 @@ function afterTick(){
 }
 function endBattle(winner){
   if(GAME.ended) return;
+  BSELMODE=false; $('#btnBSel').classList.remove('on');
   GAME.ended=true; GAME.winner=winner; GAME.endTimer=2.6;
   if(GAME.mode!=='demo') audEnd(GAME.limited?winner===0:winner>=0);
   if(GAME.mode==='demo'){ banner(winner===0?'Blue wins':winner===1?'Red wins':'Stalemate',winner===0?'var(--blue)':winner===1?'var(--red)':'var(--fg)',2400); return; }
@@ -357,19 +360,22 @@ function toolBegin(W){
   pushUndo();
   if(D.tool==='erase'){ D.stroke={type:'erase'}; eraseAt(W); return; }
   const type=D.type, team=D.team, sp=UNITS[type].sp/D.density;
-  const g={id:D.nextId++,team,type,order:defaultOrder(type),cx:W[0],cz:W[1],a:defaultFacing(team)+D.rot,slots:[],sp};
-  D.groups.push(g);
+  // a brush stroke that starts on a regiment of the same type adds to that regiment
+  let g=null, extend=false;
+  if(D.tool==='brush'){ const i=pickUnit(W,Math.max(1.8,D.size*0.6),[team]); if(i>=0&&TY[i]===type&&D.groups[GR[i]]){ g=D.groups[GR[i]]; extend=true; } }
+  if(!g){ g={id:D.nextId++,team,type,order:defaultOrder(type),cx:W[0],cz:W[1],a:defaultFacing(team)+D.rot,slots:[],sp}; D.groups.push(g); }
+  const base=g.slots.length/3;
   const free=remainingFor(type,team);
   // with no soldiers of this type in reserve, painting moves them from your other regiments of the same type
   let donors=[], borrow=0;
   if(GAME.limited && team===0){ donors=D.groups.filter(x=>x!==g && x.team===0 && x.type===type && x.slots.length).map(x=>({g:x,slots:x.slots.slice()})); borrow=donors.reduce((a,x)=>a+x.slots.length/3,0); }
   const rem=free+borrow;
-  if(rem<=0){ D.groups.pop(); D.undo.pop(); D.stroke=null; toast(noRoomReason(type,team),3200); return; }
-  D.stroke={type:D.tool,g,A:W,last:W,rem,free,donors,miss:{zone:0,terrain:0,occ:0},gi:D.groups.length-1};
+  if(rem<=0){ if(!extend) D.groups.pop(); D.undo.pop(); D.stroke=null; toast(noRoomReason(type,team),3200); return; }
+  D.stroke={type:D.tool,g,A:W,last:W,rem,free,donors,base,extend,miss:{zone:0,terrain:0,occ:0},gi:extend?-1:D.groups.length-1};
   rebuildOcc(D.stroke.gi); OCCB=OCC.slice();
   if(D.tool==='brush') brushFill(D.stroke,W); else shapeUpdate(D.stroke,W);
   applyBorrow(D.stroke);
-  if(g.slots.length) audPlace();
+  if(g.slots.length>base*3) audPlace();
   syncDeploy();
 }
 function toolMove(W){
@@ -388,8 +394,8 @@ function toolMove(W){
 function toolEnd(){
   const st=D.stroke; D.stroke=null; if(!st) return;
   if(st.g){
-    const g=st.g, placed=g.slots.length/3, moved=Math.max(0,placed-st.free);
-    if(!placed){ D.groups.splice(D.groups.indexOf(g),1); D.undo.pop(); const m=st.miss;
+    const g=st.g, placed=g.slots.length/3-(st.base||0), moved=Math.max(0,placed-st.free);
+    if(!placed){ if(!st.extend) D.groups.splice(D.groups.indexOf(g),1); D.undo.pop(); const m=st.miss;
       toast(m.zone?'Place soldiers inside your deployment zone, the tinted area on your side of the field.':m.terrain?'Soldiers cannot stand on deep water, cliffs or walls.':m.occ?'That ground is already taken. Use Select to move a regiment, or Erase to clear space.':'Nothing was placed there.',3200); }
     else { if(st.type==='brush') recenter(g);
       if(moved>0){ const sel=D.groups[D.sel]; D.groups=D.groups.filter(x=>x.slots.length); D.sel=sel?D.groups.indexOf(sel):-1; for(const d of st.donors) if(d.g.slots.length) recenter(d.g);
@@ -400,7 +406,7 @@ function toolEnd(){
 // take the soldiers a stroke has placed beyond the reserve out of the back ranks of other regiments of that type
 function applyBorrow(st){
   if(!st.donors||!st.donors.length) return;
-  let need=Math.max(0,st.g.slots.length/3-st.free);
+  let need=Math.max(0,st.g.slots.length/3-(st.base||0)-st.free);
   for(const d of st.donors) d.g.slots=d.slots.slice();
   const order=st.donors.slice().sort((a,b)=>b.slots.length-a.slots.length);
   for(const d of order){ if(need<=0) break; const take=Math.min(need,d.g.slots.length/3); d.g.slots.length-=take*3; need-=take; }
@@ -409,6 +415,7 @@ function noRoomReason(type,team){
   if(!GAME.limited||team!==0) return 'The battlefield is full. Remove some soldiers first.';
   const u=UNITS[type], own=PROG.roster[u.id]||0, cap=capOf();
   if(own<=0) return `You have no ${u.name.toLowerCase()}. Recruit them in the Council.`;
+  if(deployCounts(0).by[type]>=own) return `All ${fmt(own)} of your ${u.name.toLowerCase()} are already on the field. Recruit more in the Council, or erase some to paint them somewhere else.`;
   return `Your army is at its limit of ${fmt(cap)} soldiers. Remove some, or research Logistics in the Council to field more.`;
 }
 function missReason(st,x,z,team){ if(!inZone(x,z,team)) st.miss.zone++; else if(!passAt(x,z)) st.miss.terrain++; else st.miss.occ++; }
@@ -477,37 +484,86 @@ function pickUnit(W,radius,teams){
   return best;
 }
 function pickGroup(W){ const i=pickUnit(W,1.8,GAME.editTeams); return i>=0?GR[i]:-1; }
-function selectGroup(gi){
-  D.sel=gi; VIEW.hlGroup=gi;
-  if(gi>=0){ const g=D.groups[gi]; if(GAME.editTeams.length>1 && g.team!==D.team){ D.team=g.team; buildDeployDock(); } }
-  renderGroupPanel();
+// selection: a set of regiments in deployment (by object) or in battle (by regiment index)
+const BSEL=new Set(); let BSELMODE=false;
+const selGroups=()=>D.groups.filter(g=>D.selObj.has(g));
+function refreshHighlight(){
+  if(GAME.phase==='deploy'){ const m=new Uint8Array(D.groups.length+1); let any=0; D.groups.forEach((g,k)=>{ if(D.selObj.has(g)){ m[k]=1; any=1; } }); VIEW.hlMask=any?m:null; }
+  else { if(!BSEL.size){ VIEW.hlMask=null; return; } const m=new Uint8Array(G.length+1); for(const gi of BSEL) if(gi<m.length) m[gi]=1; VIEW.hlMask=m; }
+}
+function setSel(list,add){
+  if(!add) D.selObj.clear();
+  for(const g of list){ if(add&&list.length===1&&D.selObj.has(g)) D.selObj.delete(g); else D.selObj.add(g); }
+  const s=selGroups(); D.sel=s.length?D.groups.indexOf(s[0]):-1;
+  if(s.length && GAME.editTeams.length>1 && s[0].team!==D.team){ D.team=s[0].team; buildDeployDock(); }
+  refreshHighlight(); renderGroupPanel();
+}
+function selectGroup(gi,add){ setSel(gi>=0&&D.groups[gi]?[D.groups[gi]]:[],add); }
+const battleTeams=()=>GAME.limited?[0]:[0,1];
+function setBattleSel(list,add){ if(!add) BSEL.clear(); for(const gi of list){ if(add&&list.length===1&&BSEL.has(gi)) BSEL.delete(gi); else BSEL.add(gi); } refreshHighlight(); renderGroupPanel(); }
+function setBattleOrder(gi,k){ const g=G[gi]; if(!g) return; g.order=k; if(k===O_FLANK){ g.phase=0; g.tmr=0; assignFlankSides(); } }
+function selectAll(){ if(GAME.phase==='deploy') setSel(D.groups.filter(g=>g.team===D.team&&GAME.editTeams.includes(g.team)));
+  else if(GAME.phase==='battle'){ const t=battleTeams(); setBattleSel(G.map((g,k)=>k).filter(k=>G[k].cnt>0&&t.includes(G[k].team))); } }
+// world point to screen pixels (CSS px), or null when behind the camera
+function projW(x,y,z){
+  if(RENDER==='2d'){ const s=CAM.H/(CAM.dist*0.9+20), sy=Math.sin(CAM.yaw), cy=Math.cos(CAM.yaw); return [CAM.W/2+s*((x-CAM.tx)*sy-(z-CAM.tz)*cy), CAM.H/2+s*((x-CAM.tx)*cy+(z-CAM.tz)*sy)]; }
+  const m=CAM.vp, cx=m[0]*x+m[4]*y+m[8]*z+m[12], cy=m[1]*x+m[5]*y+m[9]*z+m[13], cw=m[3]*x+m[7]*y+m[11]*z+m[15];
+  if(cw<=0.01) return null; return [(cx/cw*0.5+0.5)*CAM.W,(0.5-cy/cw*0.5)*CAM.H];
+}
+function boxSelect(a,b,add){
+  const x0=Math.min(a[0],b[0]), x1=Math.max(a[0],b[0]), y0=Math.min(a[1],b[1]), y1=Math.max(a[1],b[1]);
+  const inside=(x,y,z)=>{ const q=projW(x,y,z); return q&&q[0]>=x0&&q[0]<=x1&&q[1]>=y0&&q[1]<=y1; };
+  if(GAME.phase==='deploy'){
+    const hit=D.groups.filter(g=>{ if(g.team!==D.team||!GAME.editTeams.includes(g.team)) return false; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(inside(wx,heightAt(wx,wz)+1,wz)) return true; } return false; });
+    if(!add) D.selObj.clear(); setSel(hit.filter(g=>!D.selObj.has(g)),true);
+  } else {
+    const t=battleTeams(), hit=new Set(); for(let i=0;i<N;i++){ if(SS[i]!==1||!t.includes(TM[i])||hit.has(GR[i])) continue; if(inside(PX[i],PY[i]+1,PZ[i])) hit.add(GR[i]); }
+    if(!add) BSEL.clear(); setBattleSel([...hit].filter(gi=>!BSEL.has(gi)),true);
+  }
 }
 function groupBounds(g,dx,dz){ let ok=true; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(!inZone(wx+dx,wz+dz,g.team)){ ok=false; break; } } return ok; }
+// move every selected regiment together
 function moveGroup(gi,dx,dz){
-  const g=D.groups[gi]; if(!g) return;
-  if(groupBounds(g,dx,dz)){ g.cx+=dx; g.cz+=dz; }
-  else if(groupBounds(g,dx,0)) g.cx+=dx; else if(groupBounds(g,0,dz)) g.cz+=dz;
+  const list=selGroups(); if(!list.length) return;
+  if(list.every(g=>groupBounds(g,dx,dz))) list.forEach(g=>{ g.cx+=dx; g.cz+=dz; });
+  else if(list.every(g=>groupBounds(g,dx,0))) list.forEach(g=>{ g.cx+=dx; });
+  else if(list.every(g=>groupBounds(g,0,dz))) list.forEach(g=>{ g.cz+=dz; });
   syncDeploy();
 }
 function moveEnd(gi){
-  const g=D.groups[gi]; if(!g) return; const before=g.slots.length/3;
-  validateGroups([g],TER); const lost=before-g.slots.length/3;
-  if(!g.slots.length){ D.groups.splice(gi,1); D.sel=-1; } if(lost>0) toast(`${lost} soldiers could not stand there and were removed`);
+  let lost=0; for(const g of selGroups()){ const before=g.slots.length/3; validateGroups([g],TER); lost+=before-g.slots.length/3; }
+  D.groups=D.groups.filter(g=>g.slots.length); if(lost>0) toast(`${lost} soldiers could not stand there and were removed`);
   syncDeploy(); refreshDeployUi();
 }
 function rotateSelected(da){
-  const g=D.groups[D.sel]; if(!g){ D.rot+=da; renderBrushPop(); return; }
-  pushUndo(); g.a+=da; const before=g.slots.length/3; const keep=g.slots.slice();
-  validateGroups([g],TER);
-  if(g.slots.length/3<before){ g.slots=keep; g.a-=da; D.undo.pop(); toast('There is no room to turn that regiment here'); }
+  const list=selGroups(); if(!list.length){ D.rot+=da; renderBrushPop(); return; }
+  pushUndo(); let blocked=0;
+  for(const g of list){ g.a+=da; const before=g.slots.length/3, keep=g.slots.slice(); validateGroups([g],TER); if(g.slots.length/3<before){ g.slots=keep; g.a-=da; blocked++; } }
+  if(blocked===list.length){ D.undo.pop(); toast('There is no room to turn there'); } else if(blocked) toast(`${blocked} regiment${blocked>1?'s':''} had no room to turn`);
   syncDeploy(); renderGroupPanel();
 }
-function deleteSelected(){ if(GAME.phase!=='deploy'||D.sel<0) return; pushUndo(); D.groups.splice(D.sel,1); D.sel=-1; syncDeploy(); refreshDeployUi(); }
-function autoDeploy(){
-  pushUndo();
-  if(GAME.limited){ const gs=validateGroups(GAME.mode==='survival'?layoutSurvival(autoCounts(),TER):layoutArmy(0,autoCounts(),TER),TER); D.groups=D.groups.filter(g=>g.team!==0); gs.forEach(addDeployGroup); }
-  else { const ids=UNITS.map(u=>u.id); const cnt=Math.max(300,deployCounts(D.team).total||900); D.groups=D.groups.filter(g=>g.team!==D.team); genArmy(D.team,cnt,ids,'balanced',(Math.random()*1e6)|0,TER).forEach(addDeployGroup); }
-  D.sel=-1; syncDeploy(); refreshDeployUi();
+function deleteSelected(){ if(GAME.phase!=='deploy') return; if(!selGroups().length) return; pushUndo(); D.groups=D.groups.filter(g=>!D.selObj.has(g)); D.selObj.clear(); D.sel=-1; syncDeploy(); refreshDeployUi(); }
+// Formation button: lay the army out again, moving on to the next formation each press
+function autoDeploy(next){
+  pushUndo(); D.selObj.clear(); D.sel=-1;
+  if(GAME.limited&&GAME.mode==='survival'){ const gs=validateGroups(layoutSurvival(autoCounts(),TER),TER); D.groups=D.groups.filter(g=>g.team!==0); gs.forEach(addDeployGroup); syncDeploy(); refreshDeployUi(); toast('Gates held by infantry, archers on the wall'); return; }
+  if(next) D.form=(D.form+1)%FORMATIONS.length;
+  const team=GAME.limited?0:D.team; let counts;
+  if(GAME.limited) counts=autoCounts();
+  else { const c=deployCounts(team); counts=c.total?c.by:armyCounts(900,UNITS.map(u=>u.id),'balanced',mulberry32((Math.random()*1e9)|0)); }
+  const gs=validateGroups(layoutFormation(team,counts,TER,FORMATIONS[D.form].id,D.order),TER);
+  D.groups=D.groups.filter(g=>g.team!==team); gs.forEach(addDeployGroup);
+  if(GAME.limited){ PROG.form=D.form; PROG.order=D.order; saveProg(); }
+  syncDeploy(); buildDeployDock(); toast(`Formation: ${FORMATIONS[D.form].name}`,1600);
+}
+// Shuffle: a new front-to-back order of the unit types, keeping the current formation
+function shuffleOrder(){
+  const team=GAME.limited?0:D.team, c=GAME.limited?autoCounts():deployCounts(team).by;
+  const ids=UNITS.map((u,t)=>t).filter(t=>c[t]>0&&(UNITS[t].cls==='inf'||UNITS[t].cls==='rng')).map(t=>UNITS[t].id);
+  if(ids.length<2){ toast('Shuffling needs at least two kinds of infantry or missile troops'); return; }
+  const prev=(D.order||BAND_ORDER).filter(id=>ids.includes(id)).join(); let tries=0;
+  do{ for(let i=ids.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [ids[i],ids[j]]=[ids[j],ids[i]]; } }while(ids.join()===prev&&++tries<8);
+  D.order=ids; autoDeploy(false); toast('Front to back: '+ids.map(id=>UNITS[UID[id]].name).join(', '),2600);
 }
 function clearTeam(){ pushUndo(); D.groups=D.groups.filter(g=>g.team!==D.team||!GAME.editTeams.includes(g.team)); D.sel=-1; syncDeploy(); refreshDeployUi(); toast('Cleared. Undo brings them back.'); }
 
@@ -541,7 +597,8 @@ function terrainEnd(){ onTerrainChanged(); const before=D.groups.reduce((a,g)=>a
 function buildDeployDock(){
   const sandbox=GAME.editTeams.length>1;
   $('#sideSeg').hidden=!sandbox; $('#btnTerrain').hidden=!(GAME.mode==='sandbox'||GAME.mode==='custom'); $('#btnResearch').hidden=!GAME.limited;
-  $('#btnAuto').textContent='Auto';
+  const surv=GAME.limited&&GAME.mode==='survival';
+  $('#btnAuto').textContent=surv?'Auto':`Formation: ${FORMATIONS[D.form].name}`; $('#btnShuffle').hidden=surv;
   $('#sideSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on',+b.dataset.side===D.team));
   $('#btnTerrain').classList.toggle('on',D.terrain); $('#btnTerrain').textContent=D.terrain?'Back to troops':'Map editor';
   const av=availableTypes(); if(!av.includes(D.type)){ const up=UID[currentTier(UNITS[D.type].id)]; D.type=av.includes(up)?up:(av[0]||0); }
@@ -589,19 +646,26 @@ function updateCapBox(){
     const c=deployCounts(D.team); document.querySelectorAll('[data-ct]').forEach(e=>{ const ty=+e.dataset.ct; e.textContent=c.by[ty]?fmt(c.by[ty])+' placed':'—'; }); }
 }
 function renderGroupPanel(){
-  const p=$('#groupPanel'), g=D.groups[D.sel];
-  if(GAME.phase!=='deploy'||!g){ p.hidden=true; VIEW.hlGroup=-1; return; }
-  VIEW.hlGroup=D.sel;
-  const o=Math.max(0,ORDER_IDS.indexOf(g.order));
-  p.innerHTML=`<h4><span style="color:${g.team?'var(--red)':'var(--blue)'}">${unitIcon(g.type)}</span>${UNITS[g.type].name} <span class="hudtext" style="color:var(--muted);font-weight:500">× ${fmt(g.slots.length/3)}</span><button class="x" id="gpX" aria-label="Close">×</button></h4>
+  const p=$('#groupPanel'), battle=GAME.phase==='battle';
+  let items=[];
+  if(GAME.phase==='deploy') items=selGroups().map(g=>({type:g.type,n:g.slots.length/3,team:g.team,o:Math.max(0,ORDER_IDS.indexOf(g.order))}));
+  else if(battle){ for(const gi of [...BSEL]){ const g=G[gi]; if(!g||g.cnt<=0){ BSEL.delete(gi); continue; } items.push({type:g.type,n:g.cnt,team:g.team,o:g.order}); } }
+  if(!items.length){ p.hidden=true; refreshHighlight(); return; }
+  const total=items.reduce((a,x)=>a+x.n,0), same=items.every(x=>x.o===items[0].o), o=same?items[0].o:-1, one=items.length===1, it=items[0];
+  const title=one?`<span style="color:${it.team?'var(--red)':'var(--blue)'}">${unitIcon(it.type)}</span>${UNITS[it.type].name} <span class="hudtext" style="color:var(--muted);font-weight:500">× ${fmt(it.n)}</span>`
+    :`${fmt(items.length)} regiments <span class="hudtext" style="color:var(--muted);font-weight:500">· ${fmt(total)} soldiers</span>`;
+  p.innerHTML=`<h4>${title}<button class="x" id="gpX" aria-label="Clear selection">×</button></h4>
   <div class="seg" role="group" aria-label="Orders">${ORDER_NAMES.map((n,k)=>`<button class="btn sm${k===o?' on':''}" data-ord="${k}">${n}</button>`).join('')}</div>
-  <div class="hint">${ORDER_HELP[o]}</div>
-  <div class="row"><button class="btn sm" id="gpL" aria-label="Turn left">⟲ Turn</button><button class="btn sm" id="gpR" aria-label="Turn right">Turn ⟳</button><div class="spacer"></div><button class="btn sm danger" id="gpDel">Remove</button></div>`;
+  <div class="hint">${o>=0?ORDER_HELP[o]:'Mixed orders. Pick one to give it to every selected regiment.'}${battle?' Orders take effect at once.':''}</div>
+  ${battle?`<div class="row"><button class="btn sm" id="gpAll">Select all</button></div>`:`<div class="row"><button class="btn sm" id="gpL" aria-label="Turn left">⟲ Turn</button><button class="btn sm" id="gpR" aria-label="Turn right">Turn ⟳</button><button class="btn sm" id="gpAll">Select all</button><div class="spacer"></div><button class="btn sm danger" id="gpDel">Remove</button></div>`}`;
   p.hidden=false;
-  p.querySelectorAll('[data-ord]').forEach(b=>b.onclick=()=>{ g.order=ORDER_IDS[+b.dataset.ord]; renderGroupPanel(); });
-  $('#gpX').onclick=()=>selectGroup(-1);
-  $('#gpL').onclick=()=>rotateSelected(Math.PI/12); $('#gpR').onclick=()=>rotateSelected(-Math.PI/12);
-  $('#gpDel').onclick=deleteSelected;
+  p.querySelectorAll('[data-ord]').forEach(b=>b.onclick=()=>{ const k=+b.dataset.ord;
+    if(GAME.phase==='deploy') selGroups().forEach(g=>g.order=ORDER_IDS[k]); else for(const gi of BSEL) setBattleOrder(gi,k);
+    renderGroupPanel(); });
+  $('#gpX').onclick=()=>{ if(GAME.phase==='deploy') selectGroup(-1); else setBattleSel([]); };
+  $('#gpAll').onclick=selectAll;
+  if(!battle){ $('#gpL').onclick=()=>rotateSelected(Math.PI/12); $('#gpR').onclick=()=>rotateSelected(-Math.PI/12); $('#gpDel').onclick=deleteSelected; }
+  refreshHighlight();
 }
 function renderBrushPop(){
   const p=$('#brushPop'); const deg=Math.round(-D.rot*180/Math.PI);
@@ -639,7 +703,8 @@ $('#sideSeg').addEventListener('click',e=>{ const b=e.target.closest('[data-side
 $('#btnTerrain').onclick=()=>{ D.terrain=!D.terrain; selectGroup(-1); buildDeployDock(); };
 $('#btnUndo').onclick=undo;
 $('#btnResearch').onclick=()=>showCouncil('tech');
-$('#btnAuto').onclick=autoDeploy;
+$('#btnAuto').onclick=()=>autoDeploy(true);
+$('#btnShuffle').onclick=shuffleOrder;
 $('#btnClear').onclick=clearTeam;
 $('#btnSaves').onclick=()=>{ const p=$('#savePop'); const show=p.hidden; closePops(); if(show){ renderSavePop(); p.hidden=false; } };
 $('#btnFight').onclick=()=>startBattle();
@@ -674,8 +739,10 @@ function updateInspect(){
   p.innerHTML=`<h4><span style="color:${TM[i]?'var(--red)':'var(--blue)'}">${unitIcon(TY[i])}</span>${u.name}<button class="x" id="inX" aria-label="Close">×</button></h4>
   <div class="hudtext" style="font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-top:4px">Health ${Math.round(Math.max(0,HP[i]))} / ${Math.round(st.hp)}</div><div class="meter"><i style="width:${hp*100}%;background:${hp>0.5?'var(--good)':hp>0.25?'var(--warn)':'var(--red)'}"></i></div>
   <div class="hudtext" style="font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em">Morale</div><div class="meter"><i style="width:${Math.min(1,mo)*100}%;background:var(--brass)"></i></div>
-  <div class="kv"><span>State</span><b>${state}</b><span>Kills</span><b>${KL[i]}</b>${g?`<span>Orders</span><b>${ORDER_NAMES[g.order]}</b>`:''}<span>Armour</span><b>${st.armor.toFixed(1).replace('.0','')}</b><span>Damage</span><b>${Math.round(st.dmg)}</b></div>`;
+  <div class="kv"><span>State</span><b>${state}</b><span>Kills</span><b>${KL[i]}</b><span>Armour</span><b>${st.armor.toFixed(1).replace('.0','')}</b><span>Damage</span><b>${Math.round(st.dmg)}</b></div>
+  ${g&&g.cnt>0&&battleTeams().includes(TM[i])?`<div class="hudtext" style="font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-top:8px">Regiment orders</div><div class="seg" style="margin-top:4px">${ORDER_NAMES.map((n,k)=>`<button class="btn sm${k===g.order?' on':''}" data-iord="${k}">${n}</button>`).join('')}</div>`:''}`;
   $('#inX').onclick=()=>inspectUnit(-1);
+  p.querySelectorAll('[data-iord]').forEach(b=>b.onclick=()=>{ setBattleOrder(GR[i],+b.dataset.iord); updateInspect(); });
 }
 
 /* ---------- HUD ---------- */
@@ -726,7 +793,9 @@ stage.addEventListener('pointerdown',e=>{
   if(PTR.size===1) beginSingle(e,p); else if(PTR.size===2){ cancelSingle(); beginPinch(); }
   e.preventDefault();
 });
-stage.addEventListener('pointermove',e=>{ const o=PTR.get(e.pointerId); if(!o) return; o.p=spos(e); if(PTR.size>=2) movePinch(); else moveSingle(o.p); });
+let HOVER=null, HOVER_T=0;
+stage.addEventListener('pointerleave',()=>{ HOVER=null; });
+stage.addEventListener('pointermove',e=>{ HOVER=spos(e); HOVER_T=performance.now(); const o=PTR.get(e.pointerId); if(!o) return; o.p=spos(e); if(PTR.size>=2) movePinch(); else moveSingle(o.p); });
 function pointerUp(e){
   const o=PTR.get(e.pointerId); if(!o) return; PTR.delete(e.pointerId);
   if(GST&&GST.kind==='pinch'){ GST=null; if(PTR.size===1){ const q=[...PTR.values()][0]; q.start=q.p; q.t=0; beginPan(q.p); } return; }
@@ -742,8 +811,11 @@ function beginSingle(e,p){
     const W=worldAt(p[0],p[1]);
     if(W && D.terrain){ GST={kind:'terrain'}; terrainBegin(W); return; }
     if(W && D.tool!=='select' && D.tool!=='pan'){ GST={kind:'tool'}; toolBegin(W); if(!D.stroke) GST=null; return; }
-    if(W && D.tool==='select'){ const gi=pickGroup(W); if(gi>=0){ selectGroup(gi); pushUndo(); GST={kind:'move',last:W,gi}; return; } }
+    if(W && D.tool==='select'){ const gi=pickGroup(W);
+      if(gi>=0){ const g=D.groups[gi]; if(e.shiftKey||e.ctrlKey||e.metaKey){ selectGroup(gi,true); return; } if(!D.selObj.has(g)) selectGroup(gi); pushUndo(); GST={kind:'move',last:W,gi}; return; }
+      GST={kind:'box',a:p,b:p,add:e.shiftKey||e.ctrlKey||e.metaKey}; return; }
   }
+  if(GAME.phase==='battle' && (BSELMODE||e.shiftKey) && e.button===0){ GST={kind:'box',a:p,b:p,add:e.shiftKey}; return; }
   beginPan(p);
 }
 function beginPan(p){ GST={kind:'pan',W0:worldAtPlane(p[0],p[1],CAM.ty),h:CAM.ty}; CAM.follow=-1; if(GAME.phase==='battle') document.querySelectorAll('#camSeg [data-cam]').forEach(x=>x.classList.remove('on')); }
@@ -754,12 +826,14 @@ function moveSingle(p){
   else if(GST.kind==='tool'){ const W=worldAt(p[0],p[1]); if(W) toolMove(W); }
   else if(GST.kind==='terrain'){ const W=worldAt(p[0],p[1]); if(W) terrainPaint(W); }
   else if(GST.kind==='move'){ const W=worldAt(p[0],p[1]); if(W){ moveGroup(GST.gi,W[0]-GST.last[0],W[1]-GST.last[1]); GST.last=W; } }
+  else if(GST.kind==='box'){ GST.b=p; }
 }
 function endSingle(o){
   const g=GST; GST=null; if(!g) return;
   const moved=Math.hypot(o.p[0]-o.start[0],o.p[1]-o.start[1]), dt=performance.now()-o.t;
   if(g.kind==='tool') toolEnd(); else if(g.kind==='terrain') terrainEnd(); else if(g.kind==='move') moveEnd(g.gi);
   else if(g.kind==='pan' && moved<8 && dt<450) tap(o.p);
+  else if(g.kind==='box'){ if(moved<6) boxTap(o.p,g.add); else boxSelect(g.a,g.b,g.add); }
 }
 function cancelSingle(){ if(!GST) return; const k=GST.kind; GST=null; if(k==='tool') toolCancel(); else if(k==='terrain') terrainEnd(); else if(k==='move'){ const gi=D.sel; if(D.undo.length){ D.groups=JSON.parse(D.undo.pop()); syncDeploy(); } selectGroup(gi); } }
 function beginPinch(){ const ps=[...PTR.values()].map(o=>o.p); const m=[(ps[0][0]+ps[1][0])/2,(ps[0][1]+ps[1][1])/2];
@@ -771,6 +845,9 @@ function movePinch(){
   if(GST.W0){ const W=worldAtPlane(m[0],m[1],GST.h); if(W){ CAM.g.tx+=GST.W0[0]-W[0]; CAM.g.tz+=GST.W0[1]-W[1]; camClamp(CAM.g); snapCam(); } }
 }
 function zoomAt(p,f){ const W0=worldAtPlane(p[0],p[1],CAM.ty); CAM.g.dist=clamp(CAM.g.dist*f,6,CAM_MAX); CAM.follow=-1; snapCam(); if(W0){ const W=worldAtPlane(p[0],p[1],CAM.ty); if(W){ CAM.g.tx+=W0[0]-W[0]; CAM.g.tz+=W0[1]-W[1]; camClamp(CAM.g); snapCam(); } } }
+function boxTap(p,add){ const W=worldAt(p[0],p[1]);
+  if(GAME.phase==='deploy'){ if(!add) selectGroup(-1); return; }
+  const i=W?pickUnit(W,2.4,battleTeams()):-1; setBattleSel(i>=0?[GR[i]]:[],add); }
 function tap(p){
   const W=worldAt(p[0],p[1]); if(!W) return;
   if(GAME.phase==='deploy'){ selectGroup(pickGroup(W)); return; }
@@ -785,9 +862,10 @@ window.addEventListener('keydown',e=>{
   if(k==='f'&&GAME.phase==='deploy'&&$('#modal').hidden){ startBattle(); return; }
   if((e.ctrlKey||e.metaKey)&&k==='z'){ e.preventDefault(); undo(); return; }
   if(k==='delete'||k==='backspace'){ deleteSelected(); return; }
+  if((e.ctrlKey||e.metaKey)&&k==='a'){ e.preventDefault(); selectAll(); return; }
   if(k==='t'&&$('#modal').hidden){ showCouncil('tech'); return; }
   if(k==='m'){ audSetOn(!AUD.on); renderSoundBtn(); toast(AUD.on?'Sound on':'Sound off',1200); return; }
-  if(k==='escape'){ closeModal(); closePops(); selectGroup(-1); inspectUnit(-1); return; }
+  if(k==='escape'){ closeModal(); closePops(); if(GAME.phase==='deploy') selectGroup(-1); else setBattleSel([]); inspectUnit(-1); return; }
   KEYS.add(k);
 });
 window.addEventListener('keyup',e=>KEYS.delete(e.key.toLowerCase()));
@@ -896,9 +974,9 @@ function showCouncil(tab){
       return `<div class="urow"><div class="t">${s.name}<small>${s.fx} per level</small></div><div class="pips" aria-label="Level ${lv} of ${UPG_MAX}">${Array.from({length:UPG_MAX},(_,k)=>`<i class="${k<lv?'f':''}"></i>`).join('')}</div>${lv>=UPG_MAX?'<span class="ok hudtext" style="color:var(--good)">MAX</span>':`<button class="btn sm" data-upg="${c.id}_${s.id}"${PROG.gold<cost?' disabled':''}>${fmt(cost)}</button>`}</div>`; }).join('')}</div>`).join('');
     body=`<p class="lede">Upgrades apply to every soldier of that class, in every battle.</p><div class="grid2">${blocks}</div>`;
   }
-  openModal(`<div class="sheet-h"><h2>War Council</h2><div class="gold" style="margin-left:auto"><span class="coin"></span>${fmt(PROG.gold)}</div><button class="x" id="cX" aria-label="Close">×</button></div>
+  openModal(`<div class="sheet-h"><h2>War Council</h2><div class="gold" style="margin-left:auto"><span class="coin"></span>${fmt(PROG.gold)}</div>${GAME.phase==='result'?`<button class="btn primary sm" id="cNext">${nextAction()[0]}</button>`:''}<button class="x" id="cX" aria-label="Close">×</button></div>
   <div class="tabs">${tabs.map(([k,n])=>`<button class="tab${k===tab?' on':''}" data-tab="${k}">${n}</button>`).join('')}</div>${body}`,s=>{
-    $('#cX').onclick=closeModal;
+    $('#cX').onclick=closeModal; const cn=s.querySelector('#cNext'); if(cn) cn.onclick=()=>nextAction()[1]();
     s.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>showCouncil(b.dataset.tab));
     s.querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>{ const id=b.dataset.buy, n=+b.dataset.n, c=UNITS[UID[id]].cost*n; if(PROG.gold<c) return; PROG.gold-=c; PROG.roster[id]=(PROG.roster[id]||0)+n; saveProg(); keepScroll(()=>showCouncil('recruit')); afterProgressChange(); });
     s.querySelectorAll('[data-tech]').forEach(b=>b.onclick=()=>{ const t=TECHBY[b.dataset.tech]; if(PROG.gold<t.cost) return; PROG.gold-=t.cost; PROG.tech[t.id]=true; let msg=`${t.name} researched`;
@@ -911,21 +989,35 @@ function showCouncil(tab){
 }
 function keepScroll(fn){ const s=$('#sheet'), y=s.scrollTop, tree=s.querySelector('.tree'), tx=tree?tree.scrollLeft:0; fn(); s.scrollTop=y; const t2=s.querySelector('.tree'); if(t2) t2.scrollLeft=tx; }
 function afterProgressChange(){ updateHud(true); if(GAME.phase==='deploy'&&GAME.limited){ STT[0]=playerStats(); for(const g of D.groups) if(g.team===0) g.type=UID[currentTier(UNITS[g.type].id)]; syncDeploy(); buildDeployDock(); } }
+// what "continue" means after a battle, so the player is never stuck on the results
+function nextAction(){
+  if(GAME.mode==='campaign'){ const L=GAME.level, won=GAME.winner===0;
+    if(won&&L<CAMPAIGN_LEN) return [`Battle ${L+1}`,()=>openCampaign(L+1)];
+    if(won) return ['Endless & Survival',()=>showBattles('endless')];
+    if(PROG.level>L) return [`Continue · Battle ${PROG.level}`,()=>openCampaign(PROG.level)];
+    return [`Try battle ${L} again`,()=>openCampaign(L)]; }
+  if(GAME.mode==='endless') return ['Go again',()=>openEndless(GAME.mapId)];
+  if(GAME.mode==='survival') return ['Go again',()=>openSurvival()];
+  return ['Edit armies and refight',()=>{ const gs=GAME.lastDeploy; enterDeploy({mode:GAME.mode,limited:false,editTeams:[0,1],rules:GAME.rules,title:GAME.title,keepTerrain:true,keepCamera:true,groups:gs}); }];
+}
+function refreshResultDock(){ const [label,fn]=nextAction(); const b=$('#btnNext'); b.textContent=label; b.onclick=fn; }
+$('#btnResults').onclick=()=>showResults();
+$('#btnRCouncil').onclick=()=>showCouncil('recruit');
 function showResults(){
-  GAME.phase='result';
+  GAME.phase='result'; setBattleSel([]); showDock('result'); refreshResultDock();
   const r=settleRewards(), won=GAME.winner===0;
-  if(GAME.limited && r.total>0) audUi('coin',0.6);
+  if(GAME.limited && r.total>0 && !GAME.coinPlayed){ GAME.coinPlayed=true; audUi('coin',0.6); }
   let title, color, sub;
   if(GAME.mode==='endless'){ title=`Wave ${GAME.wave}`; color='var(--red)'; sub=`You broke ${GAME.wave-1} wave${GAME.wave-1===1?'':'s'} before being overrun.`; }
   else if(GAME.mode==='survival'){ title=mmss(GAME.survT); color='var(--brass-hi)'; sub='held before the wall fell.'; }
   else if(GAME.mode==='campaign'&&won&&GAME.level===CAMPAIGN_LEN){ title='The war is won'; color='var(--brass-hi)'; sub=`You won the last battle. All ${CAMPAIGN_LEN} battles of the campaign are yours.`; }
   else { title=won?'Victory':GAME.winner===1?'Defeat':'Stalemate'; color=won?'var(--brass-hi)':GAME.winner===1?'var(--red)':'var(--fg)'; sub=GAME.mode==='campaign'?`Battle ${GAME.level} · ${campaignLevel(GAME.level).name}`:GAME.title; }
   const goldHtml=GAME.limited?`<div class="goldlines">${r.lines.map(([l,v])=>`<div><span>${l}</span><b>+${fmt(v)}</b></div>`).join('')}<div class="total"><span>Gold earned</span><b>+${fmt(r.total)}</b></div></div>${r.deserted?`<div class="desert">${fmt(r.deserted)} soldier${r.deserted===1?'':'s'} fled the field and deserted. They have left your roster.</div>`:''}`:'';
-  let btns='';
-  if(GAME.mode==='campaign') btns=won?(GAME.level>=CAMPAIGN_LEN?`<button class="btn" id="rCouncil">Council</button><button class="btn" id="rRetry">Replay</button><button class="btn primary" id="rEndless">Endless & Survival</button>`:`<button class="btn" id="rCouncil">Council</button><button class="btn" id="rRetry">Replay</button><button class="btn primary" id="rNext">Battle ${GAME.level+1}</button>`):`<button class="btn" id="rBattles">Battles</button><button class="btn" id="rCouncil">Council</button><button class="btn primary" id="rRetry">Try again</button>`;
-  else if(GAME.mode==='endless'||GAME.mode==='survival') btns=`<button class="btn" id="rBattles">Battles</button><button class="btn" id="rCouncil">Council</button><button class="btn primary" id="rAgain">Go again</button>`;
-  else btns=`<button class="btn" id="rBattles">Battles</button><button class="btn primary" id="rEdit">Edit armies and refight</button>`;
-  openModal(`<div class="sheet-h"><div><h2 class="result-title" style="color:${color}">${title}</h2><div class="sub" style="margin-top:6px">${esc(sub)}</div></div></div>
+  const [nextLabel,nextFn]=nextAction();
+  let btns=`<button class="btn" id="rBattles">Battles</button>`+(GAME.limited?`<button class="btn" id="rCouncil">Council</button>`:'');
+  if(GAME.mode==='campaign'&&!nextLabel.startsWith('Try')) btns+=`<button class="btn" id="rRetry">Replay battle ${GAME.level}</button>`;
+  btns+=`<button class="btn primary" id="rGo">${nextLabel}</button>`;
+  openModal(`<div class="sheet-h"><div><h2 class="result-title" style="color:${color}">${title}</h2><div class="sub" style="margin-top:6px">${esc(sub)}</div></div><button class="x" id="rX" aria-label="Close" style="align-self:flex-start">×</button></div>
   <div class="statgrid"><div class="stat"><div class="l">Blue lost</div><div class="v" style="color:var(--blue)">${fmt(B.dead[0])}<span class="hudtext" style="font-size:14px;color:var(--dim)"> / ${fmt(B.start[0])}</span></div></div>
   <div class="stat"><div class="l">Red lost</div><div class="v" style="color:var(--red)">${fmt(B.dead[1])}<span class="hudtext" style="font-size:14px;color:var(--dim)"> / ${fmt(B.start[1])}</span></div></div>
   <div class="stat"><div class="l">Routed</div><div class="v">${fmt(B.esc[0]+B.esc[1])}</div></div><div class="stat"><div class="l">Battle time</div><div class="v">${mmss(simTime)}</div></div></div>
@@ -934,7 +1026,7 @@ function showResults(){
   <div class="actions">${btns}</div>`,s=>{
     const on=(id,f)=>{ const e=s.querySelector('#'+id); if(e) e.onclick=f; };
     on('rCouncil',()=>showCouncil('recruit')); on('rBattles',()=>showBattles(GAME.mode==='endless'?'endless':GAME.mode==='survival'?'survival':'campaign'));
-    on('rNext',()=>openCampaign(GAME.level+1)); on('rRetry',()=>openCampaign(GAME.level)); on('rEndless',()=>showBattles('endless'));
+    on('rGo',nextFn); on('rX',closeModal); on('rNext',()=>openCampaign(GAME.level+1)); on('rRetry',()=>openCampaign(GAME.level)); on('rEndless',()=>showBattles('endless'));
     on('rAgain',()=>GAME.mode==='endless'?openEndless(GAME.mapId):openSurvival());
     on('rEdit',()=>{ const gs=GAME.lastDeploy; enterDeploy({mode:GAME.mode,limited:false,editTeams:[0,1],rules:GAME.rules,title:GAME.title,keepTerrain:true,keepCamera:true,groups:gs}); });
   });
@@ -982,6 +1074,28 @@ function useFallback(reason){
   if(reason) $('#fallbackBadge').title=String(reason);
   resize(); onTerrainChanged();
 }
+const OV={cv:$('#ov'),ctx:null,dirty:false};
+function drawOverlay(){
+  const cv=OV.cv; if(cv.width!==CAM.W||cv.height!==CAM.H){ cv.width=CAM.W; cv.height=CAM.H; }
+  const ctx=OV.ctx||(OV.ctx=cv.getContext('2d'));
+  if(OV.dirty){ ctx.clearRect(0,0,cv.width,cv.height); OV.dirty=false; }
+  if(GST&&GST.kind==='box'){ const a=GST.a, b=GST.b; ctx.fillStyle='rgba(232,194,106,0.12)'; ctx.strokeStyle='rgba(232,194,106,0.95)'; ctx.lineWidth=1.5;
+    ctx.fillRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1])); ctx.strokeRect(Math.min(a[0],b[0])+.5,Math.min(a[1],b[1])+.5,Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1])); OV.dirty=true; }
+  if(GAME.phase!=='deploy'||!$('#modal').hidden) return;
+  const brushy=D.terrain||D.tool==='brush'||D.tool==='erase'; if(!brushy) return;
+  let p=null;
+  if(GST&&(GST.kind==='tool'||GST.kind==='terrain')){ const o=[...PTR.values()][0]; p=o&&o.p; }
+  else if(!GST&&HOVER&&performance.now()-HOVER_T<5000) p=HOVER;
+  if(!p) return; const W=worldAt(p[0],p[1]); if(!W) return;
+  const r=D.terrain&&D.ttool==='wall'?Math.max(1.1,D.size*0.3):D.size;
+  ctx.beginPath(); let started=false;
+  for(let k=0;k<=48;k++){ const t=k/48*TAU, x=W[0]+Math.cos(t)*r, z=W[1]+Math.sin(t)*r, q=projW(x,heightAt(x,z)+0.15,z); if(!q){ started=false; continue; } if(started) ctx.lineTo(q[0],q[1]); else { ctx.moveTo(q[0],q[1]); started=true; } }
+  ctx.lineWidth=2; ctx.strokeStyle=D.terrain?'rgba(214,232,255,0.9)':D.tool==='erase'?'rgba(255,138,120,0.95)':'rgba(232,194,106,0.95)'; ctx.stroke();
+  ctx.lineWidth=4; ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.globalCompositeOperation='destination-over'; ctx.stroke(); ctx.globalCompositeOperation='source-over';
+  OV.dirty=true;
+}
+// battle selection mode: drag a box to select regiments (Shift-drag works at any time)
+$('#btnBSel').onclick=()=>{ BSELMODE=!BSELMODE; $('#btnBSel').classList.toggle('on',BSELMODE); if(BSELMODE) toast('Drag a box over regiments, or tap one, then pick their orders',2600); else setBattleSel([]); };
 function onGpuLost(info){ const why=info?`${info.reason||''} ${info.message||''}`.trim():''; console.warn('GPU device lost:',why); useFallback('GPU device lost'+(why?': '+why:'')); toast('The graphics device was lost. Switched to the canvas view.'); }
 let lastT=performance.now(), acc=0, hudT=0, miniT=0, statT=0, fpsN=0, fpsT=0;
 function loop(now){
@@ -1004,6 +1118,7 @@ function loop(now){
   if(GAME.terrainDirty && now-GAME.terrainT>150){ GAME.terrainT=now; onTerrainChanged(); }
   if(RENDER==='gpu'&&GPU_R.ok){ try{ gpuFrame(glCanvas); }catch(e){ console.error(e); useFallback(e.message); } }
   else r2dFrame(c2d);
+  drawOverlay();
   hudT-=dt; if(hudT<=0){ hudT=0.2; updateHud(); if(GAME.phase==='battle') updateInspect(); }
   miniT-=dt; if(miniT<=0){ miniT=0.14; drawMinimap(); }
   statT-=dt; if(statT<=0){ statT=0.5; if(GAME.phase==='battle') renderStats(); }
