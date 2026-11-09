@@ -461,8 +461,9 @@ function layoutFormation(team,counts,T,form,order,opt={}){
     bands.forEach((t,k)=>{ depth+=band(t,counts[t],w,zc,depth)+1.2; if(k===0) supRow(); });
   }
   if(!bands.length) supRow();
-  // cavalry on both wings, level with the front
+  // cavalry on both wings level with the front, or as a reserve band behind the army
   let wingZ=[zc-W/2-3,zc+W/2+3];
+  if(opt.cav==='rear'){ depth+=3; for(const t of cav) depth+=band(t,counts[t],W,zc,depth)+1.5; cav.length=0; }
   cav.forEach((t,k)=>{ const n=counts[t], halves=[Math.ceil(n/2),Math.floor(n/2)], sp=UNITS[t].sp;
     halves.forEach((h,side)=>{ if(!h) return; const cols=Math.max(2,Math.min(10,Math.ceil(Math.sqrt(h/2)))), rows=Math.ceil(h/cols), w=cols*sp, s=side?1:-1;
       const z=wingZ[side]+s*w/2; mk(t, front-dir*(rows*sp/2), z, fmRect(cols,rows,sp,h)); wingZ[side]+=s*(w+2); }); });

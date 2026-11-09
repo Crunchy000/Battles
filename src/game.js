@@ -62,7 +62,7 @@ const GAME={mode:'demo',phase:'battle',level:0,mapId:'hills',seed:1,mapOpt:{},sp
   demoCycle:0,terrainDirty:false,terrainT:0,terBackup:null,
   custom:{map:'grassland',blue:1500,red:1500,bs:'balanced',rs:'balanced',dist:'normal',morale:true,rain:false}};
 let RENDER='gpu';
-const D={selObj:new Set(),form:0,order:null,groups:[],nextId:1,tool:'brush',type:0,size:5,density:1,ranks:4,rot:0,team:0,sel:-1,stroke:null,undo:[],terrain:false,ttool:'raise',collapsed:false};
+const D={selObj:new Set(),fo:[{form:0,order:null,cav:'wings'},{form:0,order:null,cav:'wings'}],comp:[null,null],form:0,order:null,groups:[],nextId:1,tool:'brush',type:0,size:5,density:1,ranks:4,rot:0,team:0,sel:-1,stroke:null,undo:[],terrain:false,ttool:'raise',collapsed:false};
 
 /* ---------- unit + tool icons ---------- */
 const ICON_PATHS={
@@ -159,7 +159,7 @@ function playerLayout(T,saved,opt){
   const zoneSaved=deserializeGroups(saved,0);
   let gs=trimToRoster(validateGroups(zoneSaved,T));
   const n=gs.reduce((a,g)=>a+g.slots.length/3,0);
-  if(!saved || n < Math.min(rosterTotal(),capOf())*0.5){ gs=validateGroups(layoutFormation(0,autoCounts(),T,FORMATIONS[(PROG.form|0)%FORMATIONS.length].id,PROG.order,opt||{}),T); }
+  gs=validateGroups(layoutFormation(0,autoCounts(),T,FORMATIONS[(PROG.form|0)%FORMATIONS.length].id,PROG.order,Object.assign({cav:PROG.cav||'wings'},opt||{})),T);
   return gs;
 }
 function enterDeploy(cfg){
@@ -172,10 +172,12 @@ function enterDeploy(cfg){
   onTerrainChanged();
   STT=[playerStats(),enemyStats(GAME.enemyUlv)];
   D.groups=[]; D.nextId=1; D.undo=[]; D.sel=-1; D.selObj.clear(); BSEL.clear(); D.team=GAME.editTeams[0]; D.terrain=false; D.stroke=null;
-  if(GAME.limited){ D.form=(PROG.form|0)%FORMATIONS.length; D.order=PROG.order||null; }
+  D.fo=[{form:0,order:null,cav:'wings'},{form:0,order:null,cav:'wings'}];
+  if(GAME.limited) D.fo[0]={form:(PROG.form|0)%FORMATIONS.length,order:PROG.order||null,cav:PROG.cav||'wings'};
   const gs=cfg.groups || (cfg.makeGroups?cfg.makeGroups(TER):[]);
   for(const g of gs) addDeployGroup(g);
   const av=availableTypes(); if(!av.includes(D.type)) D.type=av[0]||0;
+  D.comp=[0,1].map(t=>Array.from(deployCounts(t).by));
   syncDeploy();
   VIEW.zones=GAME.zones.map(z=>z?[z[0],z[1]]:null);
   if(!GAME.limited && GAME.editTeams.length>1) VIEW.zones=[ZONES[0],ZONES[1]];
@@ -195,7 +197,7 @@ function openCampaign(L){
   L=clamp(L|0,1,CAMPAIGN_LEN);
   const cl=campaignLevel(L), mapOpt={fortSide:1};
   enterDeploy({mode:'campaign',level:L,mapId:cl.mapId,seed:cl.seed,mapOpt,limited:true,editTeams:[0],zones:[ZONES[0],null],ulv:cl.ulv,title:`Battle ${L} · ${cl.name}`,
-    makeGroups:T=>{ const red=genArmy(1,cl.count,cl.pool,cl.style,cl.seed+5,T,cl.mapId==='fortress'?{back:FORT_BACK}:{}); if(cl.mapId==='fortress'||cl.mapId==='pass'&&L%2===0) red.forEach(g=>{ if(UNITS[g.type].cls!=='cav') g.order='hold'; });
+    makeGroups:T=>{ const red=layoutFormation(1,armyCounts(cl.count,cl.pool,cl.style,mulberry32(cl.seed+5)),T,FORMATIONS[(L*2)%FORMATIONS.length].id,null,cl.mapId==='fortress'?{back:FORT_BACK}:{}); if(cl.mapId==='fortress'||cl.mapId==='pass'&&L%2===0) red.forEach(g=>{ if(UNITS[g.type].cls!=='cav') g.order='hold'; });
       return [...playerLayout(T,PROG.layout),...red]; }});
   toast(cl.final?`The last battle: ${fmt(cl.count)} enemy soldiers on ${MAPS.find(m=>m.id===cl.mapId).name}`:`${fmt(cl.count)} enemy soldiers on ${MAPS.find(m=>m.id===cl.mapId).name}`,2600);
 }
@@ -216,12 +218,12 @@ function openSurvival(){
 function openSandbox(mapId,withArmies){
   const ids=UNITS.map(u=>u.id);
   enterDeploy({mode:'sandbox',mapId,seed:(Math.random()*1e6)|0,mapOpt:{fortSide:1},limited:false,editTeams:[0,1],title:'Sandbox',
-    makeGroups:T=>withArmies?[...genArmy(0,900,ids,'balanced',11,T),...genArmy(1,900,ids,'balanced',29,T)]:[]});
+    makeGroups:T=>withArmies?[0,1].map(t=>layoutFormation(t,armyCounts(900,ids,'balanced',mulberry32(11+t*18)),T,'ranks',null)).flat():[]});
 }
 function openCustom(c){
   const ids=UNITS.map(u=>u.id), back={close:-12,normal:0,far:30}[c.dist]||0;
   enterDeploy({mode:'custom',mapId:c.map,seed:(Math.random()*1e6)|0,mapOpt:{fortSide:1},limited:false,editTeams:[0,1],rules:{morale:c.morale,rain:c.rain},title:'Custom battle',
-    makeGroups:T=>[...genArmy(0,c.blue,ids,c.bs,(Math.random()*1e6)|0,T,{back}),...genArmy(1,c.red,ids,c.rs,(Math.random()*1e6)|0,T,{back:back+(c.map==='fortress'?FORT_BACK:0)})]});
+    makeGroups:T=>[...layoutFormation(0,armyCounts(c.blue,ids,c.bs,mulberry32((Math.random()*1e9)|0)),T,'ranks',null,{back}),...layoutFormation(1,armyCounts(c.red,ids,c.rs,mulberry32((Math.random()*1e9)|0)),T,'ranks',null,{back:back+(c.map==='fortress'?FORT_BACK:0)})]});
 }
 function startDemo(){
   const maps=['hills','river','grassland','forest','desert','pass'];
@@ -354,8 +356,10 @@ function remainingFor(type,team){
 }
 function allowedAt(x,z,team){ return passAt(x,z) && inZone(x,z,team); }
 const defaultFacing=team=>team===0?0:Math.PI;
-function pushUndo(){ D.undo.push(JSON.stringify(D.groups)); if(D.undo.length>40) D.undo.shift(); }
-function undo(){ if(GAME.phase!=='deploy'||!D.undo.length) return; D.groups=JSON.parse(D.undo.pop()); D.sel=-1; syncDeploy(); refreshDeployUi(); }
+function pushUndo(){ D.undo.push(JSON.stringify({g:D.groups,fo:D.fo,comp:D.comp})); if(D.undo.length>40) D.undo.shift(); }
+// restore soldiers together with formation, ordering and composition
+function popUndo(){ const u=JSON.parse(D.undo.pop()); if(Array.isArray(u)){ D.groups=u; return; } D.groups=u.g; D.fo=u.fo; D.comp=u.comp; }
+function undo(){ if(GAME.phase!=='deploy'||!D.undo.length) return; popUndo(); D.sel=-1; D.selObj.clear(); syncDeploy(); buildDeployDock(); }
 function toolBegin(W){
   pushUndo();
   if(D.tool==='erase'){ D.stroke={type:'erase'}; eraseAt(W); return; }
@@ -419,7 +423,7 @@ function noRoomReason(type,team){
   return `Your army is at its limit of ${fmt(cap)} soldiers. Remove some, or research Logistics in the Council to field more.`;
 }
 function missReason(st,x,z,team){ if(!inZone(x,z,team)) st.miss.zone++; else if(!passAt(x,z)) st.miss.terrain++; else st.miss.occ++; }
-function toolCancel(){ D.stroke=null; if(D.undo.length){ D.groups=JSON.parse(D.undo.pop()); } syncDeploy(); refreshDeployUi(); }
+function toolCancel(){ D.stroke=null; if(D.undo.length){ popUndo(); } syncDeploy(); refreshDeployUi(); }
 function brushFill(st,W){
   const g=st.g, sp=g.sp, R=D.size, hs=sp*0.45;
   const gx0=Math.floor((W[0]-R)/sp), gx1=Math.ceil((W[0]+R)/sp), gz0=Math.floor((W[1]-R)/sp), gz1=Math.ceil((W[1]+R)/sp);
@@ -543,7 +547,34 @@ function rotateSelected(da){
   syncDeploy(); renderGroupPanel();
 }
 function deleteSelected(){ if(GAME.phase!=='deploy') return; if(!selGroups().length) return; pushUndo(); D.groups=D.groups.filter(g=>!D.selObj.has(g)); D.selObj.clear(); D.sel=-1; syncDeploy(); refreshDeployUi(); }
-// Formation button: lay the army out again, moving on to the next formation each press
+/* ---------- formations, ordering and army composition ---------- */
+const FORM_ICONS={
+  ranks:'<rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="17" width="18" height="4" rx="1"/>',
+  line:'<rect x="1" y="7" width="22" height="4.5" rx="1"/><rect x="1" y="14" width="22" height="3.5" rx="1" opacity=".55"/>',
+  blocks:'<rect x="2" y="3" width="5.5" height="5.5"/><rect x="9.25" y="3" width="5.5" height="5.5"/><rect x="16.5" y="3" width="5.5" height="5.5"/><rect x="5.6" y="12" width="5.5" height="5.5"/><rect x="12.9" y="12" width="5.5" height="5.5"/>',
+  wedge:'<rect x="9.5" y="2" width="5" height="3.4" rx="1"/><rect x="6.5" y="7.2" width="11" height="3.4" rx="1"/><rect x="3.5" y="12.4" width="17" height="3.4" rx="1"/><rect x="1" y="17.6" width="22" height="3.4" rx="1"/>',
+  column:'<rect x="8" y="1.5" width="8" height="4.2" rx="1"/><rect x="8" y="7.2" width="8" height="4.2" rx="1"/><rect x="8" y="12.9" width="8" height="4.2" rx="1"/><rect x="8" y="18.6" width="8" height="4.2" rx="1"/>',
+};
+const formIcon=id=>`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${FORM_ICONS[id]}</svg>`;
+const editTeam=()=>GAME.limited?0:D.team;
+const teamCounts=t=>GAME.limited&&t===0?autoCounts():(D.comp[t]||new Array(NT).fill(0));
+// the infantry and missile types present, in this side's front-to-back order
+function bandTypes(t){ const c=teamCounts(t); const present=UNITS.map((u,k)=>k).filter(k=>c[k]>0&&(UNITS[k].cls==='inf'||UNITS[k].cls==='rng')).map(k=>UNITS[k].id);
+  const o=(D.fo[t].order||BAND_ORDER).filter(id=>present.includes(id)); for(const id of present) if(!o.includes(id)) o.splice(BAND_ORDER.includes(id)?Math.min(o.length,BAND_ORDER.indexOf(id)):o.length,0,id); return o; }
+function relayout(t){
+  D.selObj.clear(); D.sel=-1;
+  let gs;
+  if(GAME.limited&&GAME.mode==='survival'&&t===0) gs=layoutSurvival(autoCounts(),TER);
+  else { const f=D.fo[t]; gs=layoutFormation(t,teamCounts(t),TER,FORMATIONS[f.form].id,bandTypes(t),{cav:f.cav}); }
+  gs=validateGroups(gs,TER); D.groups=D.groups.filter(g=>g.team!==t); gs.forEach(addDeployGroup);
+  if(GAME.limited&&t===0){ const f=D.fo[0]; PROG.form=f.form; PROG.order=f.order; PROG.cav=f.cav; saveProg(); }
+  syncDeploy(); buildDeployDock();
+}
+function setFormation(k){ const t=editTeam(); pushUndo(); D.fo[t].form=k; relayout(t); }
+function moveBand(id,dir){ const t=editTeam(), o=bandTypes(t), i=o.indexOf(id), j=i+dir; if(i<0||j<0||j>=o.length) return; [o[i],o[j]]=[o[j],o[i]]; pushUndo(); D.fo[t].order=o; D.type=UID[id]; relayout(t); }
+function setComp(t,ty,v){ pushUndo(); const c=D.comp[t]||(D.comp[t]=new Array(NT).fill(0)); const room=MAXU-2000-D.comp[t^1].reduce((a,b)=>a+b,0)-c.reduce((a,b,k)=>a+(k===ty?0:b),0); c[ty]=clamp(Math.round(v)||0,0,Math.max(0,room)); relayout(t); }
+function fillComp(t,style,total){ pushUndo(); D.comp[t]=armyCounts(clamp(total|0,0,30000),UNITS.map(u=>u.id),style,mulberry32((Math.random()*1e9)|0)); relayout(t); }
+// legacy entry point (Formation button) kept for the welcome flows
 function autoDeploy(next){
   pushUndo(); D.selObj.clear(); D.sel=-1;
   if(GAME.limited&&GAME.mode==='survival'){ const gs=validateGroups(layoutSurvival(autoCounts(),TER),TER); D.groups=D.groups.filter(g=>g.team!==0); gs.forEach(addDeployGroup); syncDeploy(); refreshDeployUi(); toast('Gates held by infantry, archers on the wall'); return; }
@@ -558,14 +589,13 @@ function autoDeploy(next){
 }
 // Shuffle: a new front-to-back order of the unit types, keeping the current formation
 function shuffleOrder(){
-  const team=GAME.limited?0:D.team, c=GAME.limited?autoCounts():deployCounts(team).by;
-  const ids=UNITS.map((u,t)=>t).filter(t=>c[t]>0&&(UNITS[t].cls==='inf'||UNITS[t].cls==='rng')).map(t=>UNITS[t].id);
+  const team=editTeam(), ids=bandTypes(team).slice();
   if(ids.length<2){ toast('Shuffling needs at least two kinds of infantry or missile troops'); return; }
-  const prev=(D.order||BAND_ORDER).filter(id=>ids.includes(id)).join(); let tries=0;
+  const prev=ids.join(); let tries=0;
   do{ for(let i=ids.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [ids[i],ids[j]]=[ids[j],ids[i]]; } }while(ids.join()===prev&&++tries<8);
-  D.order=ids; autoDeploy(false); toast('Front to back: '+ids.map(id=>UNITS[UID[id]].name).join(', '),2600);
+  pushUndo(); D.fo[team].order=ids; relayout(team);
 }
-function clearTeam(){ pushUndo(); D.groups=D.groups.filter(g=>g.team!==D.team||!GAME.editTeams.includes(g.team)); D.sel=-1; syncDeploy(); refreshDeployUi(); toast('Cleared. Undo brings them back.'); }
+function clearTeam(){ if(!GAME.limited){ pushUndo(); D.comp[D.team]=new Array(NT).fill(0); relayout(D.team); toast('Army cleared. Undo brings it back.'); return; } pushUndo(); D.groups=D.groups.filter(g=>g.team!==D.team||!GAME.editTeams.includes(g.team)); D.sel=-1; syncDeploy(); refreshDeployUi(); toast('Cleared. Undo brings them back.'); }
 
 /* ---------- map editor ---------- */
 let terrainLast=0;
@@ -598,7 +628,7 @@ function buildDeployDock(){
   const sandbox=GAME.editTeams.length>1;
   $('#sideSeg').hidden=!sandbox; $('#btnTerrain').hidden=!(GAME.mode==='sandbox'||GAME.mode==='custom'); $('#btnResearch').hidden=!GAME.limited;
   const surv=GAME.limited&&GAME.mode==='survival';
-  $('#btnAuto').textContent=surv?'Auto':`Formation: ${FORMATIONS[D.form].name}`; $('#btnShuffle').hidden=surv;
+  $('#btnClear').hidden=GAME.limited; $('#compRow').hidden=GAME.limited||D.terrain;
   $('#sideSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on',+b.dataset.side===D.team));
   $('#btnTerrain').classList.toggle('on',D.terrain); $('#btnTerrain').textContent=D.terrain?'Back to troops':'Map editor';
   const av=availableTypes(); if(!av.includes(D.type)){ const up=UID[currentTier(UNITS[D.type].id)]; D.type=av.includes(up)?up:(av[0]||0); }
@@ -606,10 +636,28 @@ function buildDeployDock(){
   if(D.terrain){
     TERRAIN_TOOLS.forEach(([id,name,col])=>{ const b=document.createElement('button'); b.className='chip'+(D.ttool===id?' on':''); b.innerHTML=`<span class="swatch" style="background:${col}"></span><span class="nm">${name}</span>`; b.onclick=()=>{ D.ttool=id; buildDeployDock(); }; chips.appendChild(b); });
   } else {
-    for(const ty of availableTypes()){ const b=document.createElement('button'); b.className='chip'+(D.team===1?' red':'')+(D.type===ty?' on':''); b.dataset.ty=ty;
-      b.innerHTML=`${unitIcon(ty)}<span class="nm">${UNITS[ty].name}</span><span class="ct" data-ct="${ty}"></span>`;
-      b.onclick=()=>{ D.type=ty; if(D.tool==='erase'||D.tool==='select'||D.tool==='pan') D.tool='brush'; buildDeployDock(); };
-      chips.appendChild(b); }
+    // front-to-back ordering strip: one tile per infantry or missile type
+    const t=editTeam(), o=bandTypes(t), c=teamCounts(t), red=t===1?' red':'';
+    if(surv){ chips.innerHTML='<div class="hint" style="align-self:center">Survival deploys to hold the wall: infantry block the three gates and missile troops line the wall. Select regiments to move them or change their orders.</div>'; }
+    else if(!o.length){ chips.innerHTML=`<div class="hint" style="align-self:center">${GAME.limited?'Recruit infantry or missile troops in the Council to arrange your ranks.':'Add soldiers above to build this army.'}</div>`; }
+    else { chips.insertAdjacentHTML('beforeend','<span class="strip-l">Front</span>');
+      o.forEach((id,k)=>{ const ty=UID[id], el=document.createElement('div'); el.className='otile'+red+(D.type===ty?' on':'');
+        el.innerHTML=`<span class="rk">${k+1}</span><button class="pick" aria-label="${UNITS[ty].name}, rank ${k+1}">${unitIcon(ty)}<span class="nm">${UNITS[ty].name}</span><span class="ct">${fmt(c[ty])}</span></button><div class="mv"><button aria-label="Move ${UNITS[ty].name} forward"${k===0?' disabled':''}>‹</button><button aria-label="Move ${UNITS[ty].name} back"${k===o.length-1?' disabled':''}>›</button></div>`;
+        el.querySelector('.pick').onclick=()=>{ D.type=ty; buildDeployDock(); };
+        const [f,b]=el.querySelectorAll('.mv button'); f.onclick=()=>moveBand(id,-1); b.onclick=()=>moveBand(id,1);
+        chips.appendChild(el); });
+      chips.insertAdjacentHTML('beforeend','<span class="strip-l">Back</span>'); }
+    // army builder for sandbox and custom battles
+    if(!GAME.limited){ const comp=$('#comp'); comp.innerHTML='';
+      const fill=document.createElement('div'); fill.className='fill';
+      fill.innerHTML=`<select id="fillStyle" aria-label="Army style">${Object.entries(STYLES).map(([k,s])=>`<option value="${k}">${s.name}</option>`).join('')}</select><input type="number" id="fillN" min="0" max="30000" step="100" value="${Math.max(100,c.reduce((a,b)=>a+b,0)||900)}" aria-label="Army size"><button class="btn sm" id="fillGo">Fill</button>`;
+      comp.appendChild(fill); comp.insertAdjacentHTML('beforeend','<span class="vsep"></span>');
+      fill.querySelector('#fillGo').onclick=()=>fillComp(t,fill.querySelector('#fillStyle').value,+fill.querySelector('#fillN').value);
+      UNITS.forEach((u,ty)=>{ const step=u.cls==='sie'||u.cls==='sup'||ty===UID.elite?1:10, el=document.createElement('div'); el.className='cchip'+red;
+        el.innerHTML=`<span class="nm">${unitIcon(ty)}${u.name}</span><button aria-label="Fewer ${u.name}">−</button><input type="number" min="0" step="${step}" value="${c[ty]||0}" aria-label="${u.name}"><button aria-label="More ${u.name}">+</button>`;
+        const [m,p]=el.querySelectorAll('button'), inp=el.querySelector('input');
+        m.onclick=e=>setComp(t,ty,(c[ty]||0)-step*(e.shiftKey?10:1)); p.onclick=e=>setComp(t,ty,(c[ty]||0)+step*(e.shiftKey?10:1)); inp.onchange=()=>setComp(t,ty,+inp.value);
+        comp.appendChild(el); }); }
   }
   const tools=$('#tools'); tools.innerHTML='';
   if(D.terrain){
@@ -620,9 +668,17 @@ function buildDeployDock(){
     sz.querySelector('input').oninput=e=>{ D.size=+e.target.value; sz.querySelector('output').textContent=D.size+' m'; };
     tools.append(sel,sz);
   } else {
-    TOOLS.forEach(([id,name])=>{ const b=document.createElement('button'); b.className='tool'+(D.tool===id?' on':''); b.innerHTML=toolIcon(id)+`<span>${name}</span>`; b.title=TOOL_HELP[id];
-      b.onclick=()=>{ D.tool=id; if(id!=='select') selectGroup(-1); buildDeployDock(); }; tools.appendChild(b); });
-    const o=document.createElement('button'); o.className='tool'; o.innerHTML=toolIcon('opts')+'<span>Options</span>'; o.onclick=()=>{ const p=$('#brushPop'); const show=p.hidden; closePops(); if(show){ renderBrushPop(); p.hidden=false; } }; tools.appendChild(o);
+    const t=editTeam(), f=D.fo[t];
+    if(surv){ const b=document.createElement('button'); b.className='btn sm'; b.textContent='Reset to the wall'; b.onclick=()=>{ pushUndo(); relayout(0); }; tools.appendChild(b); }
+    else {
+      FORMATIONS.forEach((fm,k)=>{ const b=document.createElement('button'); b.className='ftile'+(f.form===k?' on':''); b.innerHTML=formIcon(fm.id)+`<span>${fm.name}</span>`; b.title=`${fm.name} formation (front at the top)`; b.setAttribute('aria-pressed',f.form===k); b.onclick=()=>setFormation(k); tools.appendChild(b); });
+      tools.insertAdjacentHTML('beforeend','<span class="vsep"></span>');
+      const cav=document.createElement('div'); cav.className='seg'; cav.setAttribute('role','group'); cav.setAttribute('aria-label','Cavalry position'); cav.style.alignSelf='center';
+      cav.innerHTML=`<button class="btn sm${f.cav!=='rear'?' on':''}" data-cav="wings">Horse on wings</button><button class="btn sm${f.cav==='rear'?' on':''}" data-cav="rear">Horse behind</button>`;
+      cav.querySelectorAll('[data-cav]').forEach(b=>b.onclick=()=>{ pushUndo(); f.cav=b.dataset.cav; relayout(t); }); tools.appendChild(cav);
+      const sh=document.createElement('button'); sh.className='btn sm'; sh.style.alignSelf='center'; sh.textContent='Shuffle order'; sh.onclick=shuffleOrder; tools.appendChild(sh);
+      const rs=document.createElement('button'); rs.className='btn sm'; rs.style.alignSelf='center'; rs.textContent='Reset order'; rs.onclick=()=>{ pushUndo(); f.order=null; relayout(t); }; tools.appendChild(rs);
+    }
   }
   refreshDeployUi();
 }
@@ -696,15 +752,13 @@ function renderSavePop(){
 function loadFormation(arr){
   pushUndo();
   let gs=validateGroups(deserializeGroups(arr,D.team),TER); if(GAME.limited) gs=trimToRoster(gs);
-  D.groups=D.groups.filter(g=>g.team!==D.team); gs.forEach(addDeployGroup); D.sel=-1; syncDeploy(); refreshDeployUi(); closePops();
+  D.groups=D.groups.filter(g=>g.team!==D.team); gs.forEach(addDeployGroup); D.sel=-1; D.comp[D.team]=Array.from(deployCounts(D.team).by); syncDeploy(); buildDeployDock(); closePops();
   toast(gs.length?`Loaded ${fmt(gs.reduce((a,g)=>a+g.slots.length/3,0))} soldiers`:'None of those soldiers fit on this map');
 }
 $('#sideSeg').addEventListener('click',e=>{ const b=e.target.closest('[data-side]'); if(!b) return; D.team=+b.dataset.side; selectGroup(-1); const av=availableTypes(); if(!av.includes(D.type)) D.type=av[0]; buildDeployDock(); });
 $('#btnTerrain').onclick=()=>{ D.terrain=!D.terrain; selectGroup(-1); buildDeployDock(); };
 $('#btnUndo').onclick=undo;
 $('#btnResearch').onclick=()=>showCouncil('tech');
-$('#btnAuto').onclick=()=>autoDeploy(true);
-$('#btnShuffle').onclick=shuffleOrder;
 $('#btnClear').onclick=clearTeam;
 $('#btnSaves').onclick=()=>{ const p=$('#savePop'); const show=p.hidden; closePops(); if(show){ renderSavePop(); p.hidden=false; } };
 $('#btnFight').onclick=()=>startBattle();
@@ -810,10 +864,9 @@ function beginSingle(e,p){
   if(GAME.phase==='deploy'){
     const W=worldAt(p[0],p[1]);
     if(W && D.terrain){ GST={kind:'terrain'}; terrainBegin(W); return; }
-    if(W && D.tool!=='select' && D.tool!=='pan'){ GST={kind:'tool'}; toolBegin(W); if(!D.stroke) GST=null; return; }
-    if(W && D.tool==='select'){ const gi=pickGroup(W);
+    if(W){ const gi=pickGroup(W);
       if(gi>=0){ const g=D.groups[gi]; if(e.shiftKey||e.ctrlKey||e.metaKey){ selectGroup(gi,true); return; } if(!D.selObj.has(g)) selectGroup(gi); pushUndo(); GST={kind:'move',last:W,gi}; return; }
-      GST={kind:'box',a:p,b:p,add:e.shiftKey||e.ctrlKey||e.metaKey}; return; }
+      if(e.shiftKey||e.ctrlKey||e.metaKey){ GST={kind:'box',a:p,b:p,add:true}; return; } }
   }
   if(GAME.phase==='battle' && (BSELMODE||e.shiftKey) && e.button===0){ GST={kind:'box',a:p,b:p,add:e.shiftKey}; return; }
   beginPan(p);
@@ -835,7 +888,7 @@ function endSingle(o){
   else if(g.kind==='pan' && moved<8 && dt<450) tap(o.p);
   else if(g.kind==='box'){ if(moved<6) boxTap(o.p,g.add); else boxSelect(g.a,g.b,g.add); }
 }
-function cancelSingle(){ if(!GST) return; const k=GST.kind; GST=null; if(k==='tool') toolCancel(); else if(k==='terrain') terrainEnd(); else if(k==='move'){ const gi=D.sel; if(D.undo.length){ D.groups=JSON.parse(D.undo.pop()); syncDeploy(); } selectGroup(gi); } }
+function cancelSingle(){ if(!GST) return; const k=GST.kind; GST=null; if(k==='tool') toolCancel(); else if(k==='terrain') terrainEnd(); else if(k==='move'){ const gi=D.sel; if(D.undo.length){ popUndo(); syncDeploy(); } selectGroup(gi); } }
 function beginPinch(){ const ps=[...PTR.values()].map(o=>o.p); const m=[(ps[0][0]+ps[1][0])/2,(ps[0][1]+ps[1][1])/2];
   GST={kind:'pinch',d0:Math.hypot(ps[0][0]-ps[1][0],ps[0][1]-ps[1][1])||1,a0:Math.atan2(ps[1][1]-ps[0][1],ps[1][0]-ps[0][0]),dist0:CAM.g.dist,yaw0:CAM.g.yaw,h:CAM.ty,W0:worldAtPlane(m[0],m[1],CAM.ty)}; CAM.follow=-1; }
 function movePinch(){
@@ -1082,7 +1135,7 @@ function drawOverlay(){
   if(GST&&GST.kind==='box'){ const a=GST.a, b=GST.b; ctx.fillStyle='rgba(232,194,106,0.12)'; ctx.strokeStyle='rgba(232,194,106,0.95)'; ctx.lineWidth=1.5;
     ctx.fillRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1])); ctx.strokeRect(Math.min(a[0],b[0])+.5,Math.min(a[1],b[1])+.5,Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1])); OV.dirty=true; }
   if(GAME.phase!=='deploy'||!$('#modal').hidden) return;
-  const brushy=D.terrain||D.tool==='brush'||D.tool==='erase'; if(!brushy) return;
+  if(!D.terrain) return;
   let p=null;
   if(GST&&(GST.kind==='tool'||GST.kind==='terrain')){ const o=[...PTR.values()][0]; p=o&&o.p; }
   else if(!GST&&HOVER&&performance.now()-HOVER_T<5000) p=HOVER;
