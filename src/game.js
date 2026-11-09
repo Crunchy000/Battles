@@ -1084,9 +1084,8 @@ function renderSoundPop(){
   <div class="row"><div class="seg" role="group" aria-label="Sound"><button class="btn sm${AUD.on?' on':''}" id="sdOn">On</button><button class="btn sm${AUD.on?'':' on'}" id="sdOff">Off</button></div></div>
   <label class="slider"><span>Volume</span><input type="range" id="sdVol" min="0" max="100" step="1" value="${Math.round(AUD.vol*100)}"><output>${Math.round(AUD.vol*100)}%</output></label>
   <label class="slider"><span>Ambience</span><input type="range" id="sdAmb" min="0" max="100" step="1" value="${Math.round(AUD.amb*100)}"><output>${Math.round(AUD.amb*100)}%</output></label>
-  <div class="row"><span class="hudtext" style="font-size:13px;color:var(--muted)">Effects</span><div class="seg" role="group" aria-label="Sound effects"><button class="btn sm${AUD.style==='zzfx'?' on':''}" data-sty="zzfx">ZzFX</button><button class="btn sm${AUD.style==='classic'?' on':''}" data-sty="classic">Classic</button></div><button class="btn sm" id="sdTest">Test</button></div>
-  <div class="hint">Effects made with ZzFX by Frank Force, or the original sounds. Ambience is the roar of the melee, hooves, marching feet and wind. Press M to mute.</div>`;
-  p.querySelectorAll('[data-sty]').forEach(b=>b.onclick=()=>{ if(!AUD.on){ audSetOn(true); renderSoundBtn(); } audSetStyle(b.dataset.sty); renderSoundPop(); });
+  <div class="row"><button class="btn sm" id="sdTest">Test sounds</button></div>
+  <div class="hint">Impact and interface sounds from Kenney's free CC0 packs (kenney.nl). Ambience is the roar of the melee, hooves, marching feet and wind. Press M to mute.</div>`;
   $('#sdTest').onclick=()=>{ if(!AUD.on){ audSetOn(true); renderSoundBtn(); } audPreview(); };
   $('#sdX').onclick=closePops;
   $('#sdOn').onclick=()=>{ audSetOn(true); renderSoundBtn(); };

@@ -12,7 +12,7 @@ A large-scale army battle game that runs in the browser on WebGPU. Deploy thousa
 - **Battlefields**: grassland, hills, forest, river crossing, mountain pass, desert and a fortified wall, plus a map editor. Height, forests, water, walls and stakes all affect combat.
 - **Modes**: a 25-battle campaign ending in a 30,000-strong last battle, endless waves, survival behind a wall, sandbox and custom battles of up to 30,000 a side.
 - **Progression**: gold from kills and victories, recruiting, a six-branch tech tree, upgrades and army limits from 120 to 30,000. New units upgrade older ones in five lines (Swordsmen → Heavy Infantry → Champions, Archers → Crossbowmen → Musketeers, Light → Heavy Cavalry → Lancers, Catapults → Mortars, Ballistae → Cannons), so a developed army keeps a short list of types. In the campaign, soldiers who run off the field desert and leave your roster; everyone else, upgrades included, carries on to the next battle. A Reset progress button at the bottom of the Campaign tab starts over from battle 1 (saved layouts are kept).
-- **Sound**: synthesised in the browser and placed by distance from the camera. Effects are made with a port of [ZzFX](https://github.com/KilledByAPixel/ZzFX) by Frank Force (MIT licence); the sound settings switch between the ZzFX set and the original effects, and have a Test button.
+- **Sound**: impact, weapon and interface sounds are recorded samples from Kenney's free CC0 packs (Impact Sounds, Interface Sounds and RPG Audio, www.kenney.nl), embedded in the page; guns, explosions, drums, horns and the battle ambience are synthesised in the browser. Everything is placed by distance from the camera. The sound settings have a Test sounds button.
 
 ## Controls
 

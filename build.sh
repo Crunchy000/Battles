@@ -5,7 +5,15 @@
 #   test/game-test.html        local test build with an eval hook for the headless harness
 set -e
 cd "$(dirname "$0")"
-JS="src/data.js src/sim.js src/render.js src/zzfx.js src/audio.js src/game.js"
+# embed the sound samples (sounds/*.mp3) as base64 so the game stays one file
+python3 - <<'PY'
+import json, base64, os
+m=json.load(open('sounds/manifest.json')); g=json.load(open('sounds/gains.json'))
+files={k:[base64.b64encode(open('sounds/'+f,'rb').read()).decode() for f,_ in v] for k,v in m.items()}
+os.makedirs('dist',exist_ok=True)
+open('dist/sfx-data.js','w').write('const SFX_DATA='+json.dumps({'gain':g,'files':files},separators=(',',':'))+';\n')
+PY
+JS="src/data.js src/sim.js src/render.js dist/sfx-data.js src/audio.js src/game.js"
 mkdir -p dist test
 js_bundle(){ printf '\n<script>\n(()=>{\n"use strict";\n'; cat $JS; printf "$1"; printf '\n})();\n</script>\n'; }
 { cat src/shell.html; js_bundle ''; } > dist/massive-armies.html

@@ -3,12 +3,12 @@
 // One-shots are placed by distance and screen side relative to the camera and rate-limited per kind,
 // so the loudest nearby events play first; continuous loops (melee din, hooves, marching, wind) follow
 // how much is happening near the camera.
-const AUD={ctx:null,on:true,vol:0.8,amb:0.7,style:'zzfx',ready:false,building:false,voices:0,MAXV:56,
+const AUD={ctx:null,on:true,vol:0.8,amb:0.7,ready:false,building:false,voices:0,MAXV:56,
   B:{}, bus:{}, beds:{}, tok:new Float32Array(EV_N), cand:[], din:0, hoof:0, march:0, sampleT:0,
   volley:0, volleyPan:0, volleyW:0, volleyT:0, lastPlace:0, L:[0,0,0]};
 const AUD_KEY='massive-armies-audio';
-function audLoadPrefs(){ try{ const p=JSON.parse(localStorage.getItem(AUD_KEY)||'null'); if(p){ AUD.on=p.on!==false; if(p.vol>=0&&p.vol<=1) AUD.vol=+p.vol; if(p.style==='classic'||p.style==='zzfx') AUD.style=p.style; if(p.amb>=0&&p.amb<=1) AUD.amb=+p.amb; } }catch(e){} }
-function audSavePrefs(){ try{ localStorage.setItem(AUD_KEY,JSON.stringify({on:AUD.on,vol:AUD.vol,amb:AUD.amb,style:AUD.style})); }catch(e){} }
+function audLoadPrefs(){ try{ const p=JSON.parse(localStorage.getItem(AUD_KEY)||'null'); if(p){ AUD.on=p.on!==false; if(p.vol>=0&&p.vol<=1) AUD.vol=+p.vol; if(p.amb>=0&&p.amb<=1) AUD.amb=+p.amb; } }catch(e){} }
+function audSavePrefs(){ try{ localStorage.setItem(AUD_KEY,JSON.stringify({on:AUD.on,vol:AUD.vol,amb:AUD.amb})); }catch(e){} }
 const AR=Math.random;
 
 /* ---------- synthesis helpers (plain arrays) ---------- */
@@ -169,7 +169,8 @@ function audBuild(){
   AUD.bus={master, sfx:mk(0.9), amb:mk(AUD.amb), ui:mk(0.45), mus:mk(0.75)};
   const tasks=[
     ()=>{ const rv=c.createConvolver(); rv.buffer=impulseResponse(SR); const g=mk(0.42); rv.connect(g); AUD.bus.wet=rv; },
-    ...sfxTasks(AUD.style),
+    ...sfxTasks(),
+    audLoadSamples,
     ()=>{ B.loopDin=loopDin(SR); },
     ()=>{ B.loopHoof=loopHooves(SR); B.loopMarch=loopMarch(SR); },
     ()=>{ B.loopWind=loopWind(SR);
@@ -183,15 +184,9 @@ function audBuild(){
 // spread synthesis over several tasks so the page never stalls for long
 function runTasks(tasks,done){ const run=()=>{ const t=tasks.shift(); if(!t){ if(done) done(); return; } try{ t(); }catch(e){ console.warn('audio build failed',e); AUD.building=false; return; } setTimeout(run,0); }; run(); }
 // the one-shot effects, from ZzFX recipes or the original hand-built synthesis
-function sfxTasks(style){
+// the hand-built effects; recorded samples replace most of them once decoded
+function sfxTasks(){
   const SR=AUD.ctx.sampleRate, B=AUD.B;
-  if(style==='zzfx'){
-    const take=(k,n,peak)=>{ B[k]=[]; for(let i=0;i<n;i++) B[k].push(toBuf([zzLayers(SR,ZZ[k]())],(peak||0.9)*(ZZ_GAIN[k]||1))); };
-    return [()=>{ take('clang',6); take('wood',3); }, ()=>{ take('thud',4); take('struck',4); }, ()=>{ take('whoosh',3); take('musket',4); },
-      ()=>{ take('cannon',2); take('impact',2); take('blast',1); }, ()=>{ take('launch',2); take('xbow',2); take('ballista',1); },
-      ()=>{ take('drum',1); take('coin',1); take('tick',1,0.5); take('place',3,0.5); },
-      ()=>{ for(const k of ['hornAdvance','hornWave','hornDefeat','fanfare']) B[k]=[toBuf([zzLayers(SR,ZZ_MUSIC[k]())],0.9*(ZZ_GAIN[k]||1))]; }];
-  }
   return [
     ()=>{ B.clang=[0,1,2,3,4,5].map(()=>toBuf([sClang(SR,true)])); B.wood=[0,1,2].map(()=>toBuf([sClang(SR,false)])); },
     ()=>{ B.thud=[0,1,2,3].map(()=>toBuf([sThud(SR,95+AR()*70,0.22)])); B.struck=[0,1,2,3].map(()=>toBuf([sStruck(SR)])); },
@@ -204,10 +199,15 @@ function sfxTasks(style){
     ()=>{ B.hornDefeat=[toBuf([sHorn(SR,[[110,0,0.8],[82.4,0.85,1.9]])])]; B.fanfare=[toBuf([sFanfare(SR)])]; },
   ];
 }
-function audSetStyle(style){ if(style===AUD.style) return; AUD.style=style; audSavePrefs(); if(AUD.ctx&&AUD.ready) runTasks(sfxTasks(style),()=>audPreview()); }
 // a short run of effects to hear the current set
-function audPreview(){ if(!audLive()) return; const B=AUD.B, seq=[['clang',.5,0],['wood',.5,.18],['thud',.6,.34],['xbow',.45,.6],['musket',.55,.85],['launch',.6,1.15],['impact',.7,1.6],['cannon',.75,2.05],['coin',.4,2.9]];
-  for(const [k,g,d] of seq) audPlay(B[k],g,(AR()-.5)*.6,1,0,.15,d); audPlay(B.whoosh,.4,0,1,0,.2,.7); }
+function audPreview(){ if(!audLive()) return; const B=AUD.B, seq=[['clang',.5,0],['clang',.45,.2],['wood',.55,.38],['punch',.55,.6],['struck',.4,.85],['xbow',.45,1.05],['latch',.35,1.05],['musket',.55,1.35],['creak',.35,1.7],['woodH',.6,2.05],['impact',.7,2.5],['rock',.5,2.5],['cannon',.75,3.1],['coin',.4,4]];
+  for(const [k,g,d] of seq) audPlay(B[k],g,(AR()-.5)*.6,1,0,.15,d); audPlay(B.whoosh,.4,0,1,0,.2,1.2); }
+// recorded effects from Kenney's CC0 sound packs (kenney.nl), embedded as MP3 and decoded once
+function audLoadSamples(){ if(typeof SFX_DATA==='undefined') return; const c=AUD.ctx;
+  for(const [k,list] of Object.entries(SFX_DATA.files)){ const out=[]; let left=list.length;
+    const fin=()=>{ if(--left===0&&out.length) AUD.B[k]=out; };
+    for(const b64 of list){ const bin=atob(b64), u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+      try{ c.decodeAudioData(u.buffer,buf=>{ out.push(toBuf([buf.getChannelData(0).slice()],0.9*(SFX_DATA.gain[k]||1))); fin(); },fin); }catch(e){ fin(); } } } }
 function audUnlock(){
   if(!AUD.on) return;
   if(!AUD.ctx){ const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return; try{ AUD.ctx=new AC({latencyHint:'interactive'}); }catch(e){ return; } AUD.building=true; audBuild(); }
@@ -247,7 +247,12 @@ function audW(x,y,z){ const L=AUD.L, dx=x-L[0], dy=y-L[1], dz=z-L[2], d2=dx*dx+d
 function audPan(x,z){ const L=AUD.L, dx=x-L[0], dz=z-L[2], d=Math.sqrt(dx*dx+dz*dz)+6; return clamp((dx*CAM.right[0]+dz*CAM.right[2])/d,-1,1)*0.85; }
 function audVoice(t,w,pan,delay){
   const k=EVK[t], g=k[2]*Math.pow(w,0.8), lp=1100+15000*Math.pow(w,1.4), wet=0.08+0.45*(1-w), B=AUD.B;
-  if(t===EV_HIT){ const metal=AR()<0.72; audPlay(metal?B.clang:B.wood,g*(metal?1:1.3),pan,0.85+AR()*0.3,lp,wet,delay); if(AR()<0.35) audPlay(B.thud,g*0.5,pan,0.9+AR()*0.4,lp,wet,delay); return; }
+  if(t===EV_HIT){ const metal=AR()<0.72; audPlay(metal?B.clang:B.wood,g*(metal?1:1.3),pan,0.9+AR()*0.2,lp,wet,delay); if(AR()<0.3) audPlay(B.struck||B.thud,g*0.5,pan,0.9+AR()*0.2,lp,wet,delay); return; }
+  if(t===EV_KILL){ audPlay(B.punch||B.thud,g,pan,0.85+AR()*0.3,lp,wet,delay); if(AR()<0.35) audPlay(B.thud,g*0.6,pan,0.9+AR()*0.2,lp,wet,delay+0.03); return; }
+  if(t===EV_FIRE+1){ audPlay(B.xbow,g,pan,0.92+AR()*0.16,lp,wet,delay); if(B.latch) audPlay(B.latch,g*0.5,pan,0.95+AR()*0.1,lp,wet,delay); return; }
+  if(t===EV_FIRE+3&&B.creak){ audPlay(B.creak,g*0.6,pan,0.9+AR()*0.2,lp,wet,delay); audPlay(B.woodH,g,pan,0.85+AR()*0.2,lp,wet,delay+0.3); return; }
+  if(t===EV_FIRE+4){ audPlay(B.ballista,g,pan,0.95+AR()*0.1,lp,wet,delay); if(B.woodH) audPlay(B.woodH,g*0.6,pan,1.1+AR()*0.2,lp,wet,delay); return; }
+  if(t===EV_IMPACT){ audPlay(B.impact,g,pan,0.9+AR()*0.2,lp,wet,delay); if(B.rock) audPlay(B.rock,g*0.7,pan,0.8+AR()*0.3,lp,wet,delay+0.02); return; }
   if(t===EV_BLOCK){ audPlay(AR()<0.6?B.wood:B.clang,g,pan,0.9+AR()*0.3,lp,wet,delay); return; }
   if(t===EV_CHARGE){ audPlay(B.thud,g,pan,0.6+AR()*0.2,lp,wet,delay); audPlay(B.clang,g*0.45,pan,0.55+AR()*0.2,lp,wet,delay+0.01); return; }
   if(t===EV_BRACE){ audPlay(B.clang,g*0.8,pan,0.6+AR()*0.15,lp,wet,delay); audPlay(B.thud,g,pan,0.55,lp,wet,delay); return; }
