@@ -41,6 +41,8 @@ button{font:inherit;color:inherit}
 .btn.primary{background:linear-gradient(180deg,var(--brass-hi),var(--brass));color:var(--brass-ink);border-color:#f0d48a55;font-weight:700}
 .btn.primary:hover{background:linear-gradient(180deg,#f2d07c,var(--brass-hi))}
 .btn.ghost{background:transparent}
+.resetrow{display:flex;align-items:center;gap:12px;margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}.resetrow .hint{flex:1}
+.btn.danger.armed{background:#e5533f;color:#fff;border-color:#e5533f}
 .btn.danger{color:#ffb4a8;border-color:#e5533f44}
 .btn.on{border-color:var(--brass);background:#2a2618;color:var(--brass-hi)}
 .btn[disabled]{opacity:.42;cursor:not-allowed}
@@ -3435,7 +3437,8 @@ function showBattles(tab){
     const top=PROG.level; const rows=[];
     for(let L=1;L<=Math.min(top+1,CAMPAIGN_LEN);L++){ const cl=campaignLevel(L), locked=L>top, won=PROG.won[L];
       rows.push(`<div class="lrow${locked?' locked':''}"><div class="no">${L}</div><div style="min-width:0"><div class="t">${cl.name}</div><div class="m">${cl.final?'Final battle · ':''}${MAPS.find(m=>m.id===cl.mapId).name} · ${fmt(cl.count)} enemies · ${STYLES[cl.style].name.toLowerCase()} · reward ${fmt(cl.reward)}${won?' · <span class="won">won</span>':''}</div></div>${locked?'<span class="hint">Win battle '+(L-1)+'</span>':`<button class="btn sm${L===top?' primary':''}" data-camp="${L}">${won?'Replay':'Deploy'}</button>`}</div>`); }
-    body=`<p class="lede">${campaignDone()?`You have won the war. Replay any battle, or take your army into Endless and Survival.`:`Battle ${Math.min(top,CAMPAIGN_LEN)} of ${CAMPAIGN_LEN}.`} Your army: <b>${fmt(rosterTotal())}</b> soldiers in the roster, up to <b>${fmt(capOf())}</b> on the field at once. Enemies grow about 30% larger each battle. The fallen recover between battles, but soldiers who flee the field desert for good.</p><div class="list" id="campList">${rows.reverse().join('')}</div>`;
+    body=`<p class="lede">${campaignDone()?`You have won the war. Replay any battle, or take your army into Endless and Survival.`:`Battle ${Math.min(top,CAMPAIGN_LEN)} of ${CAMPAIGN_LEN}.`} Your army: <b>${fmt(rosterTotal())}</b> soldiers in the roster, up to <b>${fmt(capOf())}</b> on the field at once. Enemies grow about 30% larger each battle. The fallen recover between battles, but soldiers who flee the field desert for good.</p><div class="list" id="campList">${rows.reverse().join('')}</div>
+    <div class="resetrow"><span class="hint">Start again from battle 1 with a fresh army. Gold, soldiers, research, upgrades and best scores are wiped${CLOUD.on?' on every device signed in to your account':''}. Saved layouts are kept.</span><button class="btn sm danger" id="bReset">Reset progress</button></div>`;
   } else if(tab==='endless'){
     body=`<p class="lede">Deploy your roster and hold out against waves that grow 25% larger every round. Between waves your survivors heal fully and a third of the fallen return as reinforcements. Each broken wave pays a bonus. Best: <b>${PROG.best.endless}</b> waves.</p>
     <div class="grid2"><label class="field">Battlefield<select id="eMap">${mapOptions('grassland',['blank'])}</select></label></div><div class="actions"><button class="btn primary" id="eGo">Deploy</button></div>`;
@@ -3465,6 +3468,9 @@ function showBattles(tab){
     $('#bX').onclick=closeModal;
     s.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>showBattles(b.dataset.tab));
     s.querySelectorAll('[data-camp]').forEach(b=>b.onclick=()=>openCampaign(+b.dataset.camp));
+    if(tab==='campaign'){ const rb=$('#bReset'); let armed=0;
+      rb.onclick=()=>{ if(!armed){ armed=setTimeout(()=>{ armed=0; rb.classList.remove('armed'); rb.textContent='Reset progress'; },4000); rb.classList.add('armed'); rb.textContent='Tap again to wipe progress'; return; }
+        clearTimeout(armed); resetProgress(); }; }
     if(tab==='endless') $('#eGo').onclick=()=>openEndless($('#eMap').value);
     if(tab==='survival') $('#sGo').onclick=openSurvival;
     if(tab==='sandbox') $('#sbGo').onclick=()=>openSandbox($('#sbMap').value,$('#sbArm').checked);
@@ -3515,6 +3521,8 @@ function showCouncil(tab){
   });
 }
 function keepScroll(fn){ const s=$('#sheet'), y=s.scrollTop, tree=s.querySelector('.tree'), tx=tree?tree.scrollLeft:0; fn(); s.scrollTop=y; const t2=s.querySelector('.tree'); if(t2) t2.scrollLeft=tx; }
+// wipe the campaign and the army, keeping only saved layouts
+function resetProgress(){ const saves=PROG.saves||[]; PROG=defaultProg(); PROG.saves=saves; saveProg(); normalizeRoster(); openCampaign(1); toast('Progress reset. A fresh army stands ready for battle 1.',3200); }
 function afterProgressChange(){ updateHud(true); if(GAME.phase==='deploy'&&GAME.limited){ STT[0]=playerStats(); for(const g of D.groups) if(g.team===0) g.type=UID[currentTier(UNITS[g.type].id)]; syncDeploy(); buildDeployDock(); } }
 // what "continue" means after a battle, so the player is never stuck on the results
 function nextAction(){
