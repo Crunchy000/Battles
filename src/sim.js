@@ -175,7 +175,9 @@ function addGroupsToSim(dgs){
 }
 // commanders and medics marching with the army attach to the nearest fighting regiment and keep their place beside it
 function escortHost(g){ let best=null, bd=1e18; for(const h of G){ if(h.team!==g.team||h.cnt<=0) continue; const c=UNITS[h.type].cls; if(c==='sup'||c==='cav'||c==='sie') continue; const d=(h.ax-g.ax)**2+(h.az-g.az)**2; if(d<bd){ bd=d; best=h; } } return best; }
-function attachEscort(g){ const h=escortHost(g); g.host=h; if(!h) return; const dx=g.ax-h.ax, dz=g.az-h.az; let lx=h.sa*dx-h.ca*dz, lz=h.ca*dx+h.sa*dz;
+function attachEscort(g){ const h=escortHost(g); g.host=h; g.embed=false; if(!h) return; const dx=g.ax-h.ax, dz=g.az-h.az; let lx=h.sa*dx-h.ca*dz, lz=h.ca*dx+h.sa*dz;
+  // officers and medics deployed inside a regiment share its anchor: they simply move and turn with it
+  if(dx*dx+dz*dz<0.25 && Math.abs(Math.atan2(Math.sin(g.a-h.a),Math.cos(g.a-h.a)))<0.05){ g.embed=true; g.hlx=0; g.hlz=0; return; }
   if(Math.hypot(lx,lz)>h.rad+14){ lx=0; lz=-(h.rad+3); } g.hlx=lx; g.hlz=lz; }
 function assignEscorts(){ for(const g of G){ const st=STT[g.team][g.type]; if(g.host===undefined && (st.aura||st.heal) && g.order===O_ADV) attachEscort(g); } }
 function assignFlankSides(){
@@ -302,6 +304,7 @@ function updateGroups(){
     const leashMul= lead>leash ? Math.max(0,1-(lead-leash)/4) : 1;
     let mx=0,mz=0,move=false; g.retreat=false;
     const tg=g.tg, h=g.host;
+    if(h && h.alive>0 && g.order===O_ADV && g.embed){ g.ax=h.ax; g.az=h.az; g.a=h.a; g.spdNow=h.spdNow; g.ca=h.ca; g.sa=h.sa; continue; }
     if(h && h.alive>0 && g.order===O_ADV){
       // escort: hold station beside the host regiment, moving no faster than it needs to
       const tx=h.ax+h.sa*g.hlx+h.ca*g.hlz, tz=h.az-h.ca*g.hlx+h.sa*g.hlz, dx=tx-g.ax, dz=tz-g.az, d=Math.hypot(dx,dz);

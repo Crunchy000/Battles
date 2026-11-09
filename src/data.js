@@ -464,7 +464,7 @@ function layoutFormation(team,counts,T,form,order,opt={}){
   const cav=UNITS.map((u,t)=>t).filter(t=>has(t)&&UNITS[t].cls==='cav'), sie=UNITS.map((u,t)=>t).filter(t=>has(t)&&UNITS[t].cls==='sie');
   let area=0; for(const t of bands) area+=counts[t]*UNITS[t].sp**2;
   const W=clamp(Math.sqrt(Math.max(area,1)*(F.aspect||3.2)),18,Wmax);
-  let depth=0, span=W, supDone=false;
+  let depth=0, span=W, supDone=bands.length>0;
   // one band of type t, `width` wide, centred on z, starting dd metres behind the front; split into blocks about 22 m wide
   const band=(t,n,width,z,dd,k)=>{ const sp=UNITS[t].sp, cols=Math.max(1,Math.min(n,Math.floor(width/sp))), rows=Math.ceil(n/cols);
     const parts=Math.max(1,Math.min(8,Math.round(cols*sp/22))); let left=n, c0=0;
@@ -519,6 +519,8 @@ function layoutFormation(team,counts,T,form,order,opt={}){
     const widthOf=k=>F.wedge?W*Math.min(1,0.35+0.3*k):W*(F.width||1);
     bands.forEach((t,k)=>{ depth+=band(t,counts[t],widthOf(k),zc,depth,k)+1.2; if(k===0) supGap(widthOf(0),zc); });
   }
+  // commanders and medics stand inside the regiments, scattered among the soldiers
+  if(bands.length && !embedSupport(groups,counts,sup,dir)){ supDone=false; supGap(W,zc); }
   supGap(W,zc);
   // cavalry on both wings level with the front, or as a reserve band behind the army
   const cavPos=opt.cav||F.cav||'wings';
@@ -537,6 +539,33 @@ function layoutFormation(team,counts,T,form,order,opt={}){
     g.order= g.type===eng?'hold' : c==='sup'?'advance' : c==='cav'?(g.rear&&F.reserve?'hold':'flank') : c==='sie'?(F.siege||'advance') : F.orders(ROLE[UNITS[g.type].id]||'melee',g.k|0,u); }
   return placeGroups(groups,T,ZONES[team],dir);
 }
+// Spread commanders and medics through the infantry and missile regiments. Each regiment gets a few
+// empty places scattered through its ranks (never the front rank); the officers and medics stand in
+// them as small groups sharing the regiment's anchor and facing, so they move and turn with it.
+// Commanders favour the front regiments, where their aura does most good.
+function embedSupport(groups,counts,sup,dir){
+  const hosts=groups.filter(g=>{ const c=UNITS[g.type].cls; return (c==='inf'||c==='rng')&&g.slots.length>=9; });
+  if(!hosts.length||!sup.length) return false;
+  for(const t of sup){ const n=counts[t], w=hosts.map(h=>(h.slots.length/3)*(t===UID.cmdr&&(h.k|0)===0?3:1)), tot=w.reduce((a,b)=>a+b,0);
+    const alloc=w.map(x=>Math.floor(n*x/tot)); let rem=n-alloc.reduce((a,b)=>a+b,0);
+    const ord=w.map((x,i)=>[n*x/tot-alloc[i],i]).sort((a,b)=>b[0]-a[0]); for(let j=0;rem>0;j++,rem--) alloc[ord[j%ord.length][1]]++;
+    hosts.forEach((h,i)=>{ if(alloc[i]>0) (h.emb||(h.emb=[])).push([t,alloc[i]]); }); }
+  const out=[];
+  for(const h of hosts){ if(!h.emb) continue;
+    const m=h.slots.length/3, k=h.emb.reduce((a,e)=>a+e[1],0), sp=UNITS[h.type].sp, xs=new Set();
+    for(let i=0;i<h.slots.length;i+=3) xs.add(Math.round(h.slots[i]*100));
+    const cols=xs.size, oldRows=Math.ceil(m/cols), N=m+k, rows=Math.ceil(N/cols), all=fmRect(cols,rows,sp,N), shift=(rows-oldRows)*sp/2;
+    for(let i=1;i<all.length;i+=3) all[i]-=shift;            // keep the front rank where it was
+    // scatter: rows spread evenly behind the front, columns by the golden ratio so they never line up
+    const pick=[], used=new Set();
+    for(let j=0;j<k;j++){ const r=rows>1?1+Math.floor((j+0.5)*(rows-1)/k):0, c=Math.floor(((j*0.618+0.31)%1)*cols); let idx=Math.min(N-1,r*cols+c);
+      while(used.has(idx)) idx=(idx+1)%N; used.add(idx); pick.push(idx); }
+    const keep=[]; for(let i=0;i<N;i++) if(!used.has(i)) keep.push(all[i*3],all[i*3+1],all[i*3+2]); h.slots=keep;
+    let at=0; for(const [t,n] of h.emb){ const sl=[]; for(let j=0;j<n;j++){ const i=pick[at++]; sl.push(all[i*3],all[i*3+1],0); }
+      out.push({team:h.team,type:t,order:'advance',cx:h.cx,cz:h.cz,a:h.a,slots:sl,k:-1,embedOf:h}); }
+    delete h.emb; }
+  groups.push(...out); return out.length>0;
+}
 // Make every soldier fit: a regiment on blocked ground or outside the zone slides back or sideways
 // to open ground; anyone still without a place is found the nearest free spot. Nobody is dropped.
 function placeGroups(groups,T,zone,dir){
@@ -544,21 +573,24 @@ function placeGroups(groups,T,zone,dir){
   const occ=new Set(), key=(x,z)=>Math.round(x)*4096+Math.round(z);
   const near=(x,z)=>{ const X=Math.round(x), Z=Math.round(z); for(let a=-1;a<=1;a++) for(let b=-1;b<=1;b++) if(occ.has((X+a)*4096+Z+b)) return true; return false; };
   const pts=g=>{ const out=[]; for(let k=0;k<g.slots.length;k+=3) out.push(localToWorld(g,g.slots[k],g.slots[k+1])); return out; };
+  // a regiment and the commanders and medics standing inside it are placed together
+  const clusters=groups.filter(g=>!g.embedOf).map(g=>[g,...groups.filter(e=>e.embedOf===g)]);
   const bad=[];
-  for(const g of groups){ const P=pts(g); if(P.every(p=>ok(p[0],p[1]))) P.forEach(p=>occ.add(key(p[0],p[1]))); else bad.push([g,P]); }
+  for(const cl of clusters){ const P=cl.map(pts); if(P.every(L=>L.every(p=>ok(p[0],p[1])))) P.forEach(L=>L.forEach(p=>occ.add(key(p[0],p[1])))); else bad.push([cl,P]); }
   if(!bad.length) return groups;
   const shifts=[]; for(let b=0;b<=60;b+=2) for(let l=0;l<=90;l+=3) for(const s of l?[1,-1]:[1]) shifts.push([-dir*b,l*s,b+l*0.8]); shifts.sort((a,b)=>a[2]-b[2]);
-  for(const [g,P] of bad){
+  for(const [cl,P] of bad){
     let done=false;
-    for(const [dx,dz] of shifts){ let fit=true; for(const p of P){ const x=p[0]+dx, z=p[1]+dz; if(!ok(x,z)||near(x,z)){ fit=false; break; } } if(fit){ g.cx+=dx; g.cz+=dz; P.forEach(p=>occ.add(key(p[0]+dx,p[1]+dz))); done=true; break; } }
+    for(const [dx,dz] of shifts){ let fit=true; for(const L of P){ for(const p of L){ const x=p[0]+dx, z=p[1]+dz; if(!ok(x,z)||near(x,z)){ fit=false; break; } } if(!fit) break; }
+      if(fit){ cl.forEach((g,i)=>{ g.cx+=dx; g.cz+=dz; P[i].forEach(p=>occ.add(key(p[0]+dx,p[1]+dz))); }); done=true; break; } }
     if(done) continue;
     // no room for the whole block: keep the soldiers who can stand and find room for the rest one by one
-    const keep=[], lost=[];
-    P.forEach((p,i)=>{ if(ok(p[0],p[1])&&!occ.has(key(p[0],p[1]))){ occ.add(key(p[0],p[1])); keep.push(g.slots[i*3],g.slots[i*3+1],g.slots[i*3+2]); } else lost.push(p); });
-    for(const p of lost){ let found=null;
-      for(let r=1;r<=80&&!found;r++){ const n=Math.max(8,Math.round(r*6)); for(let s=0;s<n;s++){ const ang=Math.PI+(s%2?1:-1)*Math.ceil(s/2)*2*Math.PI/n; const x=p[0]+dir*Math.cos(ang)*r, z=p[1]+Math.sin(ang)*r; if(ok(x,z)&&!near(x,z)){ found=[x,z]; break; } } }
-      if(found){ occ.add(key(found[0],found[1])); const [lx,lz]=worldToLocal(g,found[0],found[1]); keep.push(lx,lz,0); } }
-    g.slots=keep; }
+    cl.forEach((g,gi)=>{ const keep=[], lost=[];
+      P[gi].forEach((p,i)=>{ if(ok(p[0],p[1])&&!occ.has(key(p[0],p[1]))){ occ.add(key(p[0],p[1])); keep.push(g.slots[i*3],g.slots[i*3+1],g.slots[i*3+2]); } else lost.push(p); });
+      for(const p of lost){ let found=null;
+        for(let r=1;r<=80&&!found;r++){ const n=Math.max(8,Math.round(r*6)); for(let s=0;s<n;s++){ const ang=Math.PI+(s%2?1:-1)*Math.ceil(s/2)*2*Math.PI/n; const x=p[0]+dir*Math.cos(ang)*r, z=p[1]+Math.sin(ang)*r; if(ok(x,z)&&!near(x,z)){ found=[x,z]; break; } } }
+        if(found){ occ.add(key(found[0],found[1])); const [lx,lz]=worldToLocal(g,found[0],found[1]); keep.push(lx,lz,0); } }
+      g.slots=keep; }); }
   return groups.filter(g=>g.slots.length);
 }
 function defaultOrder(type){ const c=UNITS[type].cls; return c==='cav'?'flank':'advance'; }

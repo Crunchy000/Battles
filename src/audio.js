@@ -87,9 +87,9 @@ const audMusic=(name,g,delay)=>audPlay(AUD.B[name],g,0,1,0,0.25,delay||0,AUD.bus
 /* ---------- per-kind tuning: [rate/s, burst, base gain, buffer, pitch spread] ---------- */
 const EVK=[];
 EVK[EV_HIT]=[7,2,0.42]; EVK[EV_KILL]=[3,1,0.5]; EVK[EV_BLOCK]=[3,1,0.32]; EVK[EV_CHARGE]=[3,2,0.85]; EVK[EV_BRACE]=[2,1,0.8];
-EVK[EV_FIRE+0]=[0,0,0]; EVK[EV_FIRE+1]=[3,2,0.38,'xbow']; EVK[EV_FIRE+2]=[8,3,0.62,'musket']; EVK[EV_FIRE+3]=[2,1,0.7,'launch'];
+EVK[EV_FIRE+0]=[0,0,0]; EVK[EV_FIRE+1]=[3,2,0.3,'xbow']; EVK[EV_FIRE+2]=[8,3,0.62,'musket']; EVK[EV_FIRE+3]=[2,1,0.7,'launch'];
 EVK[EV_FIRE+4]=[2,1,0.6,'ballista']; EVK[EV_FIRE+5]=[3,2,1.0,'cannon']; EVK[EV_FIRE+6]=[3,2,0.55,'cannon'];
-EVK[EV_IMPACT]=[3,1,0.8,'impact']; EVK[EV_BOOM]=[3,1,0.95,'blast']; EVK[EV_BOUNCE]=[2,1,0.5,'thud']; EVK[EV_STRUCK]=[4,2,0.34,'struck'];
+EVK[EV_IMPACT]=[3,1,0.8,'impact']; EVK[EV_BOOM]=[3,1,0.95,'blast']; EVK[EV_BOUNCE]=[2,1,0.5,'thud']; EVK[EV_STRUCK]=[3,1,0.22,'struck'];
 const AUD_R=30;
 function audW(x,y,z){ const L=AUD.L, dx=x-L[0], dy=y-L[1], dz=z-L[2], d2=dx*dx+dy*dy+dz*dz; return 1/(1+d2/(AUD_R*AUD_R)); }
 function audPan(x,z){ const L=AUD.L, dx=x-L[0], dz=z-L[2], d=Math.sqrt(dx*dx+dz*dz)+6; return clamp((dx*CAM.right[0]+dz*CAM.right[2])/d,-1,1)*0.85; }
@@ -125,7 +125,7 @@ function audioFrame(dt,phase,speed){
   // arrow volleys: many bows loosing together become one swelling whoosh
   AUD.volleyT-=dt;
   if(AUD.volley>0.04 && AUD.volleyT<=0){ const v=AUD.volley, w=AUD.volleyW/v;
-    audPlay(AUD.B.whoosh,clamp(0.12+0.3*Math.sqrt(v),0,0.75),AUD.volleyPan/v,1,1500+14000*Math.pow(w,1.2),0.1+0.4*(1-w));
+    audPlay(AUD.B.whoosh,clamp(0.05+0.11*Math.sqrt(v),0,0.28),AUD.volleyPan/v,1,1500+14000*Math.pow(w,1.2),0.1+0.4*(1-w));
     AUD.volley=0; AUD.volleyW=0; AUD.volleyPan=0; AUD.volleyT=0.6; }
   else if(AUD.volleyT<=-1){ AUD.volley*=0.5; AUD.volleyW*=0.5; AUD.volleyPan*=0.5; }
   // continuous beds

@@ -823,7 +823,7 @@ function layoutFormation(team,counts,T,form,order,opt={}){
   const cav=UNITS.map((u,t)=>t).filter(t=>has(t)&&UNITS[t].cls==='cav'), sie=UNITS.map((u,t)=>t).filter(t=>has(t)&&UNITS[t].cls==='sie');
   let area=0; for(const t of bands) area+=counts[t]*UNITS[t].sp**2;
   const W=clamp(Math.sqrt(Math.max(area,1)*(F.aspect||3.2)),18,Wmax);
-  let depth=0, span=W, supDone=false;
+  let depth=0, span=W, supDone=bands.length>0;
   // one band of type t, `width` wide, centred on z, starting dd metres behind the front; split into blocks about 22 m wide
   const band=(t,n,width,z,dd,k)=>{ const sp=UNITS[t].sp, cols=Math.max(1,Math.min(n,Math.floor(width/sp))), rows=Math.ceil(n/cols);
     const parts=Math.max(1,Math.min(8,Math.round(cols*sp/22))); let left=n, c0=0;
@@ -878,6 +878,8 @@ function layoutFormation(team,counts,T,form,order,opt={}){
     const widthOf=k=>F.wedge?W*Math.min(1,0.35+0.3*k):W*(F.width||1);
     bands.forEach((t,k)=>{ depth+=band(t,counts[t],widthOf(k),zc,depth,k)+1.2; if(k===0) supGap(widthOf(0),zc); });
   }
+  // commanders and medics stand inside the regiments, scattered among the soldiers
+  if(bands.length && !embedSupport(groups,counts,sup,dir)){ supDone=false; supGap(W,zc); }
   supGap(W,zc);
   // cavalry on both wings level with the front, or as a reserve band behind the army
   const cavPos=opt.cav||F.cav||'wings';
@@ -896,6 +898,33 @@ function layoutFormation(team,counts,T,form,order,opt={}){
     g.order= g.type===eng?'hold' : c==='sup'?'advance' : c==='cav'?(g.rear&&F.reserve?'hold':'flank') : c==='sie'?(F.siege||'advance') : F.orders(ROLE[UNITS[g.type].id]||'melee',g.k|0,u); }
   return placeGroups(groups,T,ZONES[team],dir);
 }
+// Spread commanders and medics through the infantry and missile regiments. Each regiment gets a few
+// empty places scattered through its ranks (never the front rank); the officers and medics stand in
+// them as small groups sharing the regiment's anchor and facing, so they move and turn with it.
+// Commanders favour the front regiments, where their aura does most good.
+function embedSupport(groups,counts,sup,dir){
+  const hosts=groups.filter(g=>{ const c=UNITS[g.type].cls; return (c==='inf'||c==='rng')&&g.slots.length>=9; });
+  if(!hosts.length||!sup.length) return false;
+  for(const t of sup){ const n=counts[t], w=hosts.map(h=>(h.slots.length/3)*(t===UID.cmdr&&(h.k|0)===0?3:1)), tot=w.reduce((a,b)=>a+b,0);
+    const alloc=w.map(x=>Math.floor(n*x/tot)); let rem=n-alloc.reduce((a,b)=>a+b,0);
+    const ord=w.map((x,i)=>[n*x/tot-alloc[i],i]).sort((a,b)=>b[0]-a[0]); for(let j=0;rem>0;j++,rem--) alloc[ord[j%ord.length][1]]++;
+    hosts.forEach((h,i)=>{ if(alloc[i]>0) (h.emb||(h.emb=[])).push([t,alloc[i]]); }); }
+  const out=[];
+  for(const h of hosts){ if(!h.emb) continue;
+    const m=h.slots.length/3, k=h.emb.reduce((a,e)=>a+e[1],0), sp=UNITS[h.type].sp, xs=new Set();
+    for(let i=0;i<h.slots.length;i+=3) xs.add(Math.round(h.slots[i]*100));
+    const cols=xs.size, oldRows=Math.ceil(m/cols), N=m+k, rows=Math.ceil(N/cols), all=fmRect(cols,rows,sp,N), shift=(rows-oldRows)*sp/2;
+    for(let i=1;i<all.length;i+=3) all[i]-=shift;            // keep the front rank where it was
+    // scatter: rows spread evenly behind the front, columns by the golden ratio so they never line up
+    const pick=[], used=new Set();
+    for(let j=0;j<k;j++){ const r=rows>1?1+Math.floor((j+0.5)*(rows-1)/k):0, c=Math.floor(((j*0.618+0.31)%1)*cols); let idx=Math.min(N-1,r*cols+c);
+      while(used.has(idx)) idx=(idx+1)%N; used.add(idx); pick.push(idx); }
+    const keep=[]; for(let i=0;i<N;i++) if(!used.has(i)) keep.push(all[i*3],all[i*3+1],all[i*3+2]); h.slots=keep;
+    let at=0; for(const [t,n] of h.emb){ const sl=[]; for(let j=0;j<n;j++){ const i=pick[at++]; sl.push(all[i*3],all[i*3+1],0); }
+      out.push({team:h.team,type:t,order:'advance',cx:h.cx,cz:h.cz,a:h.a,slots:sl,k:-1,embedOf:h}); }
+    delete h.emb; }
+  groups.push(...out); return out.length>0;
+}
 // Make every soldier fit: a regiment on blocked ground or outside the zone slides back or sideways
 // to open ground; anyone still without a place is found the nearest free spot. Nobody is dropped.
 function placeGroups(groups,T,zone,dir){
@@ -903,21 +932,24 @@ function placeGroups(groups,T,zone,dir){
   const occ=new Set(), key=(x,z)=>Math.round(x)*4096+Math.round(z);
   const near=(x,z)=>{ const X=Math.round(x), Z=Math.round(z); for(let a=-1;a<=1;a++) for(let b=-1;b<=1;b++) if(occ.has((X+a)*4096+Z+b)) return true; return false; };
   const pts=g=>{ const out=[]; for(let k=0;k<g.slots.length;k+=3) out.push(localToWorld(g,g.slots[k],g.slots[k+1])); return out; };
+  // a regiment and the commanders and medics standing inside it are placed together
+  const clusters=groups.filter(g=>!g.embedOf).map(g=>[g,...groups.filter(e=>e.embedOf===g)]);
   const bad=[];
-  for(const g of groups){ const P=pts(g); if(P.every(p=>ok(p[0],p[1]))) P.forEach(p=>occ.add(key(p[0],p[1]))); else bad.push([g,P]); }
+  for(const cl of clusters){ const P=cl.map(pts); if(P.every(L=>L.every(p=>ok(p[0],p[1])))) P.forEach(L=>L.forEach(p=>occ.add(key(p[0],p[1])))); else bad.push([cl,P]); }
   if(!bad.length) return groups;
   const shifts=[]; for(let b=0;b<=60;b+=2) for(let l=0;l<=90;l+=3) for(const s of l?[1,-1]:[1]) shifts.push([-dir*b,l*s,b+l*0.8]); shifts.sort((a,b)=>a[2]-b[2]);
-  for(const [g,P] of bad){
+  for(const [cl,P] of bad){
     let done=false;
-    for(const [dx,dz] of shifts){ let fit=true; for(const p of P){ const x=p[0]+dx, z=p[1]+dz; if(!ok(x,z)||near(x,z)){ fit=false; break; } } if(fit){ g.cx+=dx; g.cz+=dz; P.forEach(p=>occ.add(key(p[0]+dx,p[1]+dz))); done=true; break; } }
+    for(const [dx,dz] of shifts){ let fit=true; for(const L of P){ for(const p of L){ const x=p[0]+dx, z=p[1]+dz; if(!ok(x,z)||near(x,z)){ fit=false; break; } } if(!fit) break; }
+      if(fit){ cl.forEach((g,i)=>{ g.cx+=dx; g.cz+=dz; P[i].forEach(p=>occ.add(key(p[0]+dx,p[1]+dz))); }); done=true; break; } }
     if(done) continue;
     // no room for the whole block: keep the soldiers who can stand and find room for the rest one by one
-    const keep=[], lost=[];
-    P.forEach((p,i)=>{ if(ok(p[0],p[1])&&!occ.has(key(p[0],p[1]))){ occ.add(key(p[0],p[1])); keep.push(g.slots[i*3],g.slots[i*3+1],g.slots[i*3+2]); } else lost.push(p); });
-    for(const p of lost){ let found=null;
-      for(let r=1;r<=80&&!found;r++){ const n=Math.max(8,Math.round(r*6)); for(let s=0;s<n;s++){ const ang=Math.PI+(s%2?1:-1)*Math.ceil(s/2)*2*Math.PI/n; const x=p[0]+dir*Math.cos(ang)*r, z=p[1]+Math.sin(ang)*r; if(ok(x,z)&&!near(x,z)){ found=[x,z]; break; } } }
-      if(found){ occ.add(key(found[0],found[1])); const [lx,lz]=worldToLocal(g,found[0],found[1]); keep.push(lx,lz,0); } }
-    g.slots=keep; }
+    cl.forEach((g,gi)=>{ const keep=[], lost=[];
+      P[gi].forEach((p,i)=>{ if(ok(p[0],p[1])&&!occ.has(key(p[0],p[1]))){ occ.add(key(p[0],p[1])); keep.push(g.slots[i*3],g.slots[i*3+1],g.slots[i*3+2]); } else lost.push(p); });
+      for(const p of lost){ let found=null;
+        for(let r=1;r<=80&&!found;r++){ const n=Math.max(8,Math.round(r*6)); for(let s=0;s<n;s++){ const ang=Math.PI+(s%2?1:-1)*Math.ceil(s/2)*2*Math.PI/n; const x=p[0]+dir*Math.cos(ang)*r, z=p[1]+Math.sin(ang)*r; if(ok(x,z)&&!near(x,z)){ found=[x,z]; break; } } }
+        if(found){ occ.add(key(found[0],found[1])); const [lx,lz]=worldToLocal(g,found[0],found[1]); keep.push(lx,lz,0); } }
+      g.slots=keep; }); }
   return groups.filter(g=>g.slots.length);
 }
 function defaultOrder(type){ const c=UNITS[type].cls; return c==='cav'?'flank':'advance'; }
@@ -1118,7 +1150,9 @@ function addGroupsToSim(dgs){
 }
 // commanders and medics marching with the army attach to the nearest fighting regiment and keep their place beside it
 function escortHost(g){ let best=null, bd=1e18; for(const h of G){ if(h.team!==g.team||h.cnt<=0) continue; const c=UNITS[h.type].cls; if(c==='sup'||c==='cav'||c==='sie') continue; const d=(h.ax-g.ax)**2+(h.az-g.az)**2; if(d<bd){ bd=d; best=h; } } return best; }
-function attachEscort(g){ const h=escortHost(g); g.host=h; if(!h) return; const dx=g.ax-h.ax, dz=g.az-h.az; let lx=h.sa*dx-h.ca*dz, lz=h.ca*dx+h.sa*dz;
+function attachEscort(g){ const h=escortHost(g); g.host=h; g.embed=false; if(!h) return; const dx=g.ax-h.ax, dz=g.az-h.az; let lx=h.sa*dx-h.ca*dz, lz=h.ca*dx+h.sa*dz;
+  // officers and medics deployed inside a regiment share its anchor: they simply move and turn with it
+  if(dx*dx+dz*dz<0.25 && Math.abs(Math.atan2(Math.sin(g.a-h.a),Math.cos(g.a-h.a)))<0.05){ g.embed=true; g.hlx=0; g.hlz=0; return; }
   if(Math.hypot(lx,lz)>h.rad+14){ lx=0; lz=-(h.rad+3); } g.hlx=lx; g.hlz=lz; }
 function assignEscorts(){ for(const g of G){ const st=STT[g.team][g.type]; if(g.host===undefined && (st.aura||st.heal) && g.order===O_ADV) attachEscort(g); } }
 function assignFlankSides(){
@@ -1245,6 +1279,7 @@ function updateGroups(){
     const leashMul= lead>leash ? Math.max(0,1-(lead-leash)/4) : 1;
     let mx=0,mz=0,move=false; g.retreat=false;
     const tg=g.tg, h=g.host;
+    if(h && h.alive>0 && g.order===O_ADV && g.embed){ g.ax=h.ax; g.az=h.az; g.a=h.a; g.spdNow=h.spdNow; g.ca=h.ca; g.sa=h.sa; continue; }
     if(h && h.alive>0 && g.order===O_ADV){
       // escort: hold station beside the host regiment, moving no faster than it needs to
       const tx=h.ax+h.sa*g.hlx+h.ca*g.hlz, tz=h.az-h.ca*g.hlx+h.sa*g.hlz, dx=tx-g.ax, dz=tz-g.az, d=Math.hypot(dx,dz);
@@ -2293,9 +2328,9 @@ const audMusic=(name,g,delay)=>audPlay(AUD.B[name],g,0,1,0,0.25,delay||0,AUD.bus
 /* ---------- per-kind tuning: [rate/s, burst, base gain, buffer, pitch spread] ---------- */
 const EVK=[];
 EVK[EV_HIT]=[7,2,0.42]; EVK[EV_KILL]=[3,1,0.5]; EVK[EV_BLOCK]=[3,1,0.32]; EVK[EV_CHARGE]=[3,2,0.85]; EVK[EV_BRACE]=[2,1,0.8];
-EVK[EV_FIRE+0]=[0,0,0]; EVK[EV_FIRE+1]=[3,2,0.38,'xbow']; EVK[EV_FIRE+2]=[8,3,0.62,'musket']; EVK[EV_FIRE+3]=[2,1,0.7,'launch'];
+EVK[EV_FIRE+0]=[0,0,0]; EVK[EV_FIRE+1]=[3,2,0.3,'xbow']; EVK[EV_FIRE+2]=[8,3,0.62,'musket']; EVK[EV_FIRE+3]=[2,1,0.7,'launch'];
 EVK[EV_FIRE+4]=[2,1,0.6,'ballista']; EVK[EV_FIRE+5]=[3,2,1.0,'cannon']; EVK[EV_FIRE+6]=[3,2,0.55,'cannon'];
-EVK[EV_IMPACT]=[3,1,0.8,'impact']; EVK[EV_BOOM]=[3,1,0.95,'blast']; EVK[EV_BOUNCE]=[2,1,0.5,'thud']; EVK[EV_STRUCK]=[4,2,0.34,'struck'];
+EVK[EV_IMPACT]=[3,1,0.8,'impact']; EVK[EV_BOOM]=[3,1,0.95,'blast']; EVK[EV_BOUNCE]=[2,1,0.5,'thud']; EVK[EV_STRUCK]=[3,1,0.22,'struck'];
 const AUD_R=30;
 function audW(x,y,z){ const L=AUD.L, dx=x-L[0], dy=y-L[1], dz=z-L[2], d2=dx*dx+dy*dy+dz*dz; return 1/(1+d2/(AUD_R*AUD_R)); }
 function audPan(x,z){ const L=AUD.L, dx=x-L[0], dz=z-L[2], d=Math.sqrt(dx*dx+dz*dz)+6; return clamp((dx*CAM.right[0]+dz*CAM.right[2])/d,-1,1)*0.85; }
@@ -2331,7 +2366,7 @@ function audioFrame(dt,phase,speed){
   // arrow volleys: many bows loosing together become one swelling whoosh
   AUD.volleyT-=dt;
   if(AUD.volley>0.04 && AUD.volleyT<=0){ const v=AUD.volley, w=AUD.volleyW/v;
-    audPlay(AUD.B.whoosh,clamp(0.12+0.3*Math.sqrt(v),0,0.75),AUD.volleyPan/v,1,1500+14000*Math.pow(w,1.2),0.1+0.4*(1-w));
+    audPlay(AUD.B.whoosh,clamp(0.05+0.11*Math.sqrt(v),0,0.28),AUD.volleyPan/v,1,1500+14000*Math.pow(w,1.2),0.1+0.4*(1-w));
     AUD.volley=0; AUD.volleyW=0; AUD.volleyPan=0; AUD.volleyT=0.6; }
   else if(AUD.volleyT<=-1){ AUD.volley*=0.5; AUD.volleyW*=0.5; AUD.volleyPan*=0.5; }
   // continuous beds
@@ -2537,7 +2572,7 @@ function enterDeploy(cfg){
   D.fo=[{form:'ranks',order:null,cav:'wings'},{form:'ranks',order:null,cav:'wings'}];
   if(GAME.limited){ const id=progForm(); D.fo[0]={form:id,order:null,cav:PROG.cav||FORM_BY[id].cav}; }
   const gs=cfg.groups || (cfg.makeGroups?cfg.makeGroups(TER):[]);
-  for(const g of gs) addDeployGroup(g);
+  addDeployGroups(gs);
   const av=availableTypes(); if(!av.includes(D.type)) D.type=av[0]||0;
   D.comp=[0,1].map(t=>Array.from(deployCounts(t).by));
   syncDeploy();
@@ -2546,7 +2581,11 @@ function enterDeploy(cfg){
   camPreset('iso',!cfg.keepCamera);
   buildDeployDock(); showDock('deploy'); updateHud(true);
 }
-function addDeployGroup(g){ D.groups.push({id:D.nextId++,team:g.team,type:g.type,order:g.order||defaultOrder(g.type),cx:g.cx,cz:g.cz,a:g.a,slots:g.slots.slice(),sp:g.sp||UNITS[g.type].sp}); }
+function addDeployGroup(g){ const n={id:D.nextId++,team:g.team,type:g.type,order:g.order||defaultOrder(g.type),cx:g.cx,cz:g.cz,a:g.a,slots:g.slots.slice(),sp:g.sp||UNITS[g.type].sp}; D.groups.push(n); return n; }
+// add a layout's regiments, keeping commanders and medics linked to the regiment they stand inside
+function addDeployGroups(gs){ const made=new Map(); for(const g of gs) made.set(g,addDeployGroup(g)); for(const g of gs) if(g.embedOf&&made.has(g.embedOf)) made.get(g).withId=made.get(g.embedOf).id; }
+// a selection plus the officers and medics inside the selected regiments
+function withLinked(list){ const ids=new Set(list.map(g=>g.id)); return list.concat(D.groups.filter(g=>g.withId&&ids.has(g.withId)&&!list.includes(g))); }
 function syncDeploy(){
   N=0;
   for(let gi=0;gi<D.groups.length;gi++){ const g=D.groups[gi], ca=Math.cos(g.a), sa=Math.sin(g.a);
@@ -2891,22 +2930,22 @@ function boxSelect(a,b,add){
 function groupBounds(g,dx,dz){ let ok=true; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(!inZone(wx+dx,wz+dz,g.team)){ ok=false; break; } } return ok; }
 // move every selected regiment together
 function moveGroup(gi,dx,dz){
-  const list=selGroups(); if(!list.length) return;
+  const list=withLinked(selGroups()); if(!list.length) return;
   if(list.every(g=>groupBounds(g,dx,dz))) list.forEach(g=>{ g.cx+=dx; g.cz+=dz; });
   else if(list.every(g=>groupBounds(g,dx,0))) list.forEach(g=>{ g.cx+=dx; });
   else if(list.every(g=>groupBounds(g,0,dz))) list.forEach(g=>{ g.cz+=dz; });
   syncDeploy();
 }
 function moveEnd(gi){
-  let lost=0; for(const g of selGroups()){ const before=g.slots.length/3; validateGroups([g],TER); lost+=before-g.slots.length/3; }
+  let lost=0; for(const g of withLinked(selGroups())){ const before=g.slots.length/3; validateGroups([g],TER); lost+=before-g.slots.length/3; }
   D.groups=D.groups.filter(g=>g.slots.length); if(lost>0) toast(`${lost} soldiers could not stand there and were removed`);
   syncDeploy(); refreshDeployUi();
 }
 function rotateSelected(da){
-  const list=selGroups(); if(!list.length){ D.rot+=da; renderBrushPop(); return; }
-  pushUndo(); let blocked=0;
+  const sel=selGroups(); if(!sel.length){ D.rot+=da; renderBrushPop(); return; }
+  const list=withLinked(sel); pushUndo(); let blocked=0;
   for(const g of list){ g.a+=da; const before=g.slots.length/3, keep=g.slots.slice(); validateGroups([g],TER); if(g.slots.length/3<before){ g.slots=keep; g.a-=da; blocked++; } }
-  if(blocked===list.length){ D.undo.pop(); toast('There is no room to turn there'); } else if(blocked) toast(`${blocked} regiment${blocked>1?'s':''} had no room to turn`);
+  if(blocked>=sel.length&&blocked===list.length){ D.undo.pop(); toast('There is no room to turn there'); } else if(blocked) toast(`${blocked} regiment${blocked>1?'s':''} had no room to turn`);
   syncDeploy(); renderGroupPanel();
 }
 function deleteSelected(){ if(GAME.phase!=='deploy') return; if(!selGroups().length) return; pushUndo(); D.groups=D.groups.filter(g=>!D.selObj.has(g)); D.selObj.clear(); D.sel=-1; syncDeploy(); refreshDeployUi(); }
@@ -2936,7 +2975,7 @@ function relayout(t){
   let gs;
   if(GAME.limited&&GAME.mode==='survival'&&t===0) gs=layoutSurvival(autoCounts(),TER);
   else { const f=D.fo[t]; gs=layoutFormation(t,teamCounts(t),TER,f.form,bandTypes(t),Object.assign({cav:f.cav},formOpt(t))); }
-  gs=validateGroups(gs,TER); D.groups=D.groups.filter(g=>g.team!==t); gs.forEach(addDeployGroup);
+  gs=validateGroups(gs,TER); D.groups=D.groups.filter(g=>g.team!==t); addDeployGroups(gs);
   if(GAME.limited&&t===0){ const f=D.fo[0]; PROG.formId=f.form; PROG.order=null; PROG.cav=f.cav; saveProg(); }
   syncDeploy(); buildDeployDock();
 }

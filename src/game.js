@@ -176,7 +176,7 @@ function enterDeploy(cfg){
   D.fo=[{form:'ranks',order:null,cav:'wings'},{form:'ranks',order:null,cav:'wings'}];
   if(GAME.limited){ const id=progForm(); D.fo[0]={form:id,order:null,cav:PROG.cav||FORM_BY[id].cav}; }
   const gs=cfg.groups || (cfg.makeGroups?cfg.makeGroups(TER):[]);
-  for(const g of gs) addDeployGroup(g);
+  addDeployGroups(gs);
   const av=availableTypes(); if(!av.includes(D.type)) D.type=av[0]||0;
   D.comp=[0,1].map(t=>Array.from(deployCounts(t).by));
   syncDeploy();
@@ -185,7 +185,11 @@ function enterDeploy(cfg){
   camPreset('iso',!cfg.keepCamera);
   buildDeployDock(); showDock('deploy'); updateHud(true);
 }
-function addDeployGroup(g){ D.groups.push({id:D.nextId++,team:g.team,type:g.type,order:g.order||defaultOrder(g.type),cx:g.cx,cz:g.cz,a:g.a,slots:g.slots.slice(),sp:g.sp||UNITS[g.type].sp}); }
+function addDeployGroup(g){ const n={id:D.nextId++,team:g.team,type:g.type,order:g.order||defaultOrder(g.type),cx:g.cx,cz:g.cz,a:g.a,slots:g.slots.slice(),sp:g.sp||UNITS[g.type].sp}; D.groups.push(n); return n; }
+// add a layout's regiments, keeping commanders and medics linked to the regiment they stand inside
+function addDeployGroups(gs){ const made=new Map(); for(const g of gs) made.set(g,addDeployGroup(g)); for(const g of gs) if(g.embedOf&&made.has(g.embedOf)) made.get(g).withId=made.get(g.embedOf).id; }
+// a selection plus the officers and medics inside the selected regiments
+function withLinked(list){ const ids=new Set(list.map(g=>g.id)); return list.concat(D.groups.filter(g=>g.withId&&ids.has(g.withId)&&!list.includes(g))); }
 function syncDeploy(){
   N=0;
   for(let gi=0;gi<D.groups.length;gi++){ const g=D.groups[gi], ca=Math.cos(g.a), sa=Math.sin(g.a);
@@ -530,22 +534,22 @@ function boxSelect(a,b,add){
 function groupBounds(g,dx,dz){ let ok=true; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(!inZone(wx+dx,wz+dz,g.team)){ ok=false; break; } } return ok; }
 // move every selected regiment together
 function moveGroup(gi,dx,dz){
-  const list=selGroups(); if(!list.length) return;
+  const list=withLinked(selGroups()); if(!list.length) return;
   if(list.every(g=>groupBounds(g,dx,dz))) list.forEach(g=>{ g.cx+=dx; g.cz+=dz; });
   else if(list.every(g=>groupBounds(g,dx,0))) list.forEach(g=>{ g.cx+=dx; });
   else if(list.every(g=>groupBounds(g,0,dz))) list.forEach(g=>{ g.cz+=dz; });
   syncDeploy();
 }
 function moveEnd(gi){
-  let lost=0; for(const g of selGroups()){ const before=g.slots.length/3; validateGroups([g],TER); lost+=before-g.slots.length/3; }
+  let lost=0; for(const g of withLinked(selGroups())){ const before=g.slots.length/3; validateGroups([g],TER); lost+=before-g.slots.length/3; }
   D.groups=D.groups.filter(g=>g.slots.length); if(lost>0) toast(`${lost} soldiers could not stand there and were removed`);
   syncDeploy(); refreshDeployUi();
 }
 function rotateSelected(da){
-  const list=selGroups(); if(!list.length){ D.rot+=da; renderBrushPop(); return; }
-  pushUndo(); let blocked=0;
+  const sel=selGroups(); if(!sel.length){ D.rot+=da; renderBrushPop(); return; }
+  const list=withLinked(sel); pushUndo(); let blocked=0;
   for(const g of list){ g.a+=da; const before=g.slots.length/3, keep=g.slots.slice(); validateGroups([g],TER); if(g.slots.length/3<before){ g.slots=keep; g.a-=da; blocked++; } }
-  if(blocked===list.length){ D.undo.pop(); toast('There is no room to turn there'); } else if(blocked) toast(`${blocked} regiment${blocked>1?'s':''} had no room to turn`);
+  if(blocked>=sel.length&&blocked===list.length){ D.undo.pop(); toast('There is no room to turn there'); } else if(blocked) toast(`${blocked} regiment${blocked>1?'s':''} had no room to turn`);
   syncDeploy(); renderGroupPanel();
 }
 function deleteSelected(){ if(GAME.phase!=='deploy') return; if(!selGroups().length) return; pushUndo(); D.groups=D.groups.filter(g=>!D.selObj.has(g)); D.selObj.clear(); D.sel=-1; syncDeploy(); refreshDeployUi(); }
@@ -575,7 +579,7 @@ function relayout(t){
   let gs;
   if(GAME.limited&&GAME.mode==='survival'&&t===0) gs=layoutSurvival(autoCounts(),TER);
   else { const f=D.fo[t]; gs=layoutFormation(t,teamCounts(t),TER,f.form,bandTypes(t),Object.assign({cav:f.cav},formOpt(t))); }
-  gs=validateGroups(gs,TER); D.groups=D.groups.filter(g=>g.team!==t); gs.forEach(addDeployGroup);
+  gs=validateGroups(gs,TER); D.groups=D.groups.filter(g=>g.team!==t); addDeployGroups(gs);
   if(GAME.limited&&t===0){ const f=D.fo[0]; PROG.formId=f.form; PROG.order=null; PROG.cav=f.cav; saveProg(); }
   syncDeploy(); buildDeployDock();
 }
