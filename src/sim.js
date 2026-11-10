@@ -241,16 +241,19 @@ function meleeHit(i,t,mult){
   let shock=0;
   if(dot<-0.35){ dmg*=1.6; shock+=5; } else if(dot<0.35){ dmg*=1.25; shock+=2; }
   if(a.antiCav && b.cls==='cav') dmg*=a.antiCav;
+  if(b.brace && a.cls==='cav') dmg*=0.7;   // the spear points keep horses at a distance
   if(a.cls==='cav' && CH[i]>0.55 && TER.k[cellIdx(PX[i],PZ[i])]!==T_FOREST){
-    if(b.brace && dot>0.3 && SS[t]===1){
-      damage(i,22+b.dmg*1.5,t); CH[i]=0; STN[i]=0.9; VX[i]*=-0.3; VZ[i]*=-0.3; sfx(EV_BRACE,PX[t],PY[t],PZ[t]);
+    // spearmen brace against any charge that does not come from right behind them, and standing spearmen
+    // (holding, or locked in a fight) brace all round like a hedgehog
+    if(b.brace && SS[t]===1 && (dot>-0.1 || VX[t]*VX[t]+VZ[t]*VZ[t]<1)){
+      damage(i,30+b.dmg*2,t); CH[i]=0; STN[i]=0.9; VX[i]*=-0.3; VZ[i]*=-0.3; sfx(EV_BRACE,PX[t],PY[t],PZ[t]);
       spark(PX[t]+dx*.4,PY[t]+1.2,PZ[t]+dz*.4); spark(PX[t]+dx*.4,PY[t]+1.2,PZ[t]+dz*.4);
       return;
     }
-    dmg*=a.charge;
+    dmg*= b.brace ? 1+(a.charge-1)*0.5 : a.charge;   // even caught from behind, a spear wall blunts the charge
     const vl=Math.hypot(VX[i],VZ[i])||1, kn=a.knock/Math.sqrt(b.mass);
-    knock(t,VX[i]/vl*kn,VZ[i]/vl*kn); STN[t]=0.6; shock+=15; sfx(EV_CHARGE,PX[t],PY[t],PZ[t]);
-    CH[i]= a.id==='lancer'?0.5:0;
+    knock(t,VX[i]/vl*kn,VZ[i]/vl*kn); STN[t]=b.brace?0.3:0.6; shock+=b.brace?7:15; sfx(EV_CHARGE,PX[t],PY[t],PZ[t]);
+    CH[i]= a.id==='lancer'?0.25:0;
     dustPuff(PX[t],PY[t],PZ[t],2);
   }
   if(SS[t]===2) dmg*=1.6;   // a routed soldier does not defend himself

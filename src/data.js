@@ -39,7 +39,7 @@ const COSTK=new Float32Array(TERRAIN.map(t=>t.cost));
 // cls: inf rng cav sie sup.  ucat: upgrade category
 const UNITS=[
  {id:'sword', name:'Swordsmen', cls:'inf', hp:100,armor:3, dmg:14,aps:1.0, speed:3.2,range:0.9,morale:60, cost:10, r:.42,sp:1.1,mass:1,  scale:1,   foot:.55, role:'Line infantry', desc:'Reliable all-rounders for the main battle line.'},
- {id:'spear', name:'Spearmen',  cls:'inf', hp:95, armor:2, dmg:12,aps:0.9, speed:3.0,range:2.0,morale:62, cost:12, r:.40,sp:1.1,mass:1,  scale:1,   foot:.55, antiCav:2.5, brace:1, role:'Anti-cavalry', desc:'Long reach. Deals 2.5× damage to cavalry and stops charges that hit them head-on.'},
+ {id:'spear', name:'Spearmen',  cls:'inf', hp:95, armor:2, dmg:12,aps:0.9, speed:3.0,range:2.0,morale:62, cost:12, r:.40,sp:1.1,mass:1,  scale:1,   foot:.55, antiCav:3, brace:1, role:'Anti-cavalry', desc:'Long reach. Deals 3× damage to cavalry and stops charges, from any side when they are standing.'},
  {id:'shield',name:'Shieldbearers',cls:'inf',hp:150,armor:7,dmg:8, aps:0.8, speed:2.7,range:0.9,morale:75, cost:18, r:.46,sp:1.2,mass:1.4,scale:1,   foot:.6,  shield:1, role:'Defensive wall', desc:'Blocks arrows from the front and armours troops standing beside them.'},
  {id:'heavy', name:'Heavy Infantry',cls:'inf',hp:230,armor:10,dmg:20,aps:0.7,speed:2.2,range:1.0,morale:85, cost:30, r:.50,sp:1.3,mass:1.8,scale:1.15,foot:.65, role:'Armoured front', desc:'Slow, heavily armoured troops that anchor the line.'},
  {id:'bers',  name:'Berserkers',cls:'inf', hp:90, armor:0, dmg:24,aps:1.2, speed:4.1,range:0.9,morale:100,cost:22, r:.44,sp:1.15,mass:1.1,scale:1,  foot:.55, noFlee:1, role:'Shock troops', desc:'Huge damage and no armour. They never rout.'},
