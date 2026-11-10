@@ -48,9 +48,33 @@ const owned=id=>!!PROG.tech[id];
 const superseded=id=>!!(NEXT_TIER[id]&&PROG.tech[NEXT_TIER[id]]);
 const currentTier=id=>{ while(NEXT_TIER[id]&&PROG.tech[NEXT_TIER[id]]) id=NEXT_TIER[id]; return id; };
 const fieldable=id=>owned(id)&&!superseded(id);
-// move soldiers of retired tiers into the newest tier of their line (also upgrades older saves)
-function normalizeRoster(){ for(const line of LINES){ let top=null; for(const id of line) if(PROG.tech[id]) top=id; if(!top) continue;
-  for(const id of line){ if(id===top) break; const n=PROG.roster[id]||0; if(n){ PROG.roster[top]=(PROG.roster[top]||0)+n; PROG.roster[id]=0; } } } }
+// The army is a list of blocks. The roster of soldiers is worked out from them, always at the newest tier.
+const blockOK=id=>BLOCK_BY[id].req.every(owned);
+// champions are too costly to fill ordinary blocks: those stop at heavy infantry, and champions have a block of their own
+const blockTier=id=>{ const t=currentTier(id); return t==='elite'&&id!=='elite'?'heavy':t; };
+const progSoldiers=B=>blockComp(B,owned,blockTier);
+const blockCost=B=>progSoldiers(B).reduce((a,n,i)=>a+n*UNITS[i].cost,0);
+const blockN=B=>B.comp.reduce((a,c)=>a+c[0],0);
+// older saves kept loose soldiers: organise them into blocks and refund what is left over
+function rosterToBlocks(r){
+  const sum=ids=>ids.reduce((a,id)=>a+(r[id]||0),0), b={};
+  const cav=sum(['lcav','hcav','lancer']), sie=sum(['cata','mortar','ballista','cannon']), rng=sum(['archer','xbow','musket']);
+  let foot=0; for(const u of UNITS) if(u.cls==='inf'||u.cls==='sup') foot+=r[u.id]||0;
+  if(blockOK('horse')) b.horse=Math.floor(cav/50);
+  if(blockOK('battery')) b.battery=Math.floor(sie/6);
+  b.missile=Math.floor(rng*0.5/80); foot+=rng-b.missile*80;
+  const kinds=['line','square','shieldwall','wedge'].filter(blockOK);
+  for(let k=0;foot>=50&&k<5000;k++){ const id=kinds[k%kinds.length]; b[id]=(b[id]||0)+1; foot-=BLOCK_BY[id].size; }
+  for(const id in b) if(!b[id]) delete b[id];
+  if(!Object.keys(b).length) b.line=1;
+  const value=UNITS.reduce((a,u)=>a+(r[u.id]||0)*u.cost,0), worth=Object.entries(b).reduce((a,[id,n])=>a+n*blockCost(BLOCK_BY[id]),0);
+  if(value>worth) PROG.gold+=Math.round(value-worth);
+  return b;
+}
+function normalizeRoster(){
+  if(!PROG.blocks||typeof PROG.blocks!=='object') PROG.blocks=rosterToBlocks(PROG.roster||{});
+  const r={}; for(const B of BLOCKS){ const n=PROG.blocks[B.id]||0; if(!n) continue; progSoldiers(B).forEach((c,i)=>{ if(c) r[UNITS[i].id]=(r[UNITS[i].id]||0)+c*n; }); }
+  PROG.roster=r; }
 const rosterTotal=()=>UNITS.reduce((a,u)=>a+(PROG.roster[u.id]||0),0);
 function enemyAbilities(lv){ const a={}; if(lv>=1) a.firearrows=1; if(lv>=2) a.shieldwall=1; if(lv>=3) a.thunder=1; if(lv>=4){a.hymn=1;a.surgery=1;} if(lv>=5) a.shells=1; return a; }
 const playerStats=()=>GAME.limited?computeStats(upgLv,PROG.tech):computeStats(lvZero,{});
@@ -62,7 +86,7 @@ const GAME={mode:'demo',phase:'battle',level:0,mapId:'hills',seed:1,mapOpt:{},sp
   demoCycle:0,terrainDirty:false,terrainT:0,terBackup:null,
   custom:{map:'grassland',blue:1500,red:1500,bs:'balanced',rs:'balanced',dist:'normal',morale:true,rain:false}};
 let RENDER='gpu';
-const D={selObj:new Set(),fo:[{form:0,order:null,cav:'wings'},{form:0,order:null,cav:'wings'}],comp:[null,null],form:0,order:null,groups:[],nextId:1,tool:'brush',type:0,size:5,density:1,ranks:4,rot:0,team:0,sel:-1,stroke:null,undo:[],terrain:false,ttool:'raise',collapsed:false};
+const D={nextBk:1,selObj:new Set(),fo:[{form:0,order:null,cav:'wings'},{form:0,order:null,cav:'wings'}],comp:[null,null],form:0,order:null,groups:[],nextId:1,tool:'brush',type:0,size:5,density:1,ranks:4,rot:0,team:0,sel:-1,stroke:null,undo:[],terrain:false,ttool:'raise',collapsed:false};
 
 /* ---------- unit + tool icons ---------- */
 const ICON_PATHS={
@@ -140,39 +164,31 @@ function markTerrainDirty(){ GAME.terrainDirty=true; }
 
 /* ---------- modes ---------- */
 function availableTypes(){ return UNITS.map((u,i)=>i).filter(i=>!GAME.limited||fieldable(UNITS[i].id)); }
-function serializeGroups(gs){ return gs.map(g=>({type:UNITS[g.type].id,order:g.order,cx:+g.cx.toFixed(2),cz:+g.cz.toFixed(2),a:+g.a.toFixed(3),sp:+(g.sp||UNITS[g.type].sp).toFixed(3),slots:g.slots.map(v=>+v.toFixed(2))})); }
-function deserializeGroups(arr,team){ const out=[]; for(const g of (arr||[])){ const ty=UID[GAME.limited&&UID[g.type]!==undefined?currentTier(g.type):g.type]; if(ty===undefined||!Array.isArray(g.slots)) continue; out.push({team,type:ty,order:ORDER_IDS.includes(g.order)?g.order:defaultOrder(ty),cx:+g.cx||0,cz:+g.cz||0,a:+g.a||0,sp:+g.sp||UNITS[ty].sp,slots:g.slots.map(Number)}); } return out; }
+function serializeGroups(gs){ return gs.map(g=>({type:UNITS[g.type].id,order:g.order,cx:+g.cx.toFixed(2),cz:+g.cz.toFixed(2),a:+g.a.toFixed(3),sp:+(g.sp||UNITS[g.type].sp).toFixed(3),slots:g.slots.map(v=>+v.toFixed(2)),...(g.bk?{bk:g.bk,bn:g.bn||'',bkind:g.bkind||''}:{})})); }
+function deserializeGroups(arr,team){ const out=[]; for(const g of (arr||[])){ const ty=UID[GAME.limited&&UID[g.type]!==undefined?blockTier(g.type):g.type]; if(ty===undefined||!Array.isArray(g.slots)) continue; out.push({team,type:ty,order:ORDER_IDS.includes(g.order)?g.order:defaultOrder(ty),cx:+g.cx||0,cz:+g.cz||0,a:+g.a||0,sp:+g.sp||UNITS[ty].sp,slots:g.slots.map(Number),...(g.bk?{bk:+g.bk,bn:String(g.bn||'').slice(0,40),bkind:BLOCK_BY[g.bkind]?g.bkind:''}:{})}); } return out; }
 function inZone(x,z,team){ const zn=GAME.zones[team]; if(!zn) return x>X0+2&&x<X1-2&&z>Z0+2&&z<Z1-2; return x>=zn[0]&&x<=zn[1]&&z>Z0+2&&z<Z1-2; }
 function validateGroups(gs,T){ for(const g of gs){ const keep=[]; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(passAtT(T,wx,wz)&&inZone(wx,wz,g.team)) keep.push(g.slots[k],g.slots[k+1],g.slots[k+2]); } g.slots=keep; } return gs.filter(g=>g.slots.length); }
 function trimToRoster(gs){
   const left={}; UNITS.forEach(u=>left[u.id]=PROG.roster[u.id]||0); let cap=capOf();
-  for(const g of gs){ const id=UNITS[g.type].id; if(!fieldable(id)){ g.slots=[]; continue; } const n=Math.min(g.slots.length/3,left[id],cap); g.slots.length=n*3; left[id]-=n; cap-=n; }
+  for(const g of gs){ const id=blockTier(UNITS[g.type].id); g.type=UID[id]; if(!(left[id]>0)){ g.slots=[]; continue; } const n=Math.min(g.slots.length/3,left[id],cap); g.slots.length=n*3; left[id]-=n; cap-=n; }
   return gs.filter(g=>g.slots.length);
 }
-// the soldiers who take the field. Over the army limit, commanders, medics and engineers all come,
-// then the formation picks the rest: types it wants most get a bigger share of their numbers.
-function autoCounts(formId){
-  const counts=new Array(NT).fill(0), cap=capOf(), have=new Array(NT).fill(0); let tot=0;
-  UNITS.forEach((u,i)=>{ if(fieldable(u.id)){ have[i]=PROG.roster[u.id]||0; tot+=have[i]; } });
-  if(tot<=cap) return have;
-  let room=cap; for(const id of ['cmdr','medic','eng']){ const i=UID[id]; counts[i]=Math.min(have[i],room); room-=counts[i]; }
-  const want=(FORM_BY[formId||progForm()]||FORMATIONS[0]).want, w=UNITS.map((u,i)=>unitRole(i)==='sup'?0:(want[unitRole(i)]||1));
-  // find the share x so that sum(min(have, x*have*w)) fills the room
-  const fill=x=>{ let s=0; for(let i=0;i<NT;i++) if(w[i]) s+=Math.min(have[i],x*have[i]*w[i]); return s; };
-  let lo=0, hi=1; while(fill(hi)<room && hi<1e6) hi*=2; for(let k=0;k<40;k++){ const m=(lo+hi)/2; if(fill(m)<room) lo=m; else hi=m; }
-  const exact=UNITS.map((u,i)=>w[i]?Math.min(have[i],lo*have[i]*w[i]):0);
-  for(let i=0;i<NT;i++) if(w[i]) counts[i]=Math.floor(exact[i]);
-  let left=cap-counts.reduce((a,b)=>a+b,0); const ord=exact.map((v,i)=>[v-Math.floor(v),i]).filter(p=>w[p[1]]&&counts[p[1]]<have[p[1]]).sort((a,b)=>b[0]-a[0]);
-  for(let j=0;left>0&&j<ord.length;j++,left--) counts[ord[j][1]]++;
-  return counts;
+// the block mix for Auto army: each kind of block can be switched off, halved (Less), left to Auto, or favoured (More)
+const MIX_W={off:0,less:.5,auto:1,more:2.5}, MIX_NAMES=[['off','Off'],['less','Less'],['auto','Auto'],['more','More']];
+const mixOf=id=>(PROG.mix&&PROG.mix['b_'+id])||'auto';
+// the blocks Auto army fields: everything you own, or over the army limit a fair share of each kind
+function autoBlocks(){
+  const cap=capOf(), own=BLOCKS.map(B=>{ const m=mixOf(B.id), n=blockOK(B.id)?(PROG.blocks[B.id]||0):0; return m==='off'?0:m==='less'?Math.ceil(n/2):n; });
+  const w=BLOCKS.map(B=>MIX_W[mixOf(B.id)]), pick=BLOCKS.map(()=>0), size=BLOCKS.map(B=>blockN(B)); let used=0;
+  for(;;){ let best=-1, br=1e9; BLOCKS.forEach((B,k)=>{ if(pick[k]>=own[k]||used+size[k]>cap) return; const r=(pick[k]+0.5)/(own[k]*w[k]); if(r<br){ br=r; best=k; } }); if(best<0) break; pick[best]++; used+=size[best]; }
+  const list=[]; BLOCKS.forEach((B,k)=>{ const c=progSoldiers(B); for(let i=0;i<pick[k];i++) list.push({B,counts:c}); }); return list;
 }
+function autoCounts(){ const c=new Array(NT).fill(0); for(const b of autoBlocks()) b.counts.forEach((n,i)=>c[i]+=n); return c; }
 // the formation the player last chose (older saves stored a number)
-function progForm(){ if(PROG.formId&&FORM_BY[PROG.formId]) return PROG.formId; const old=['ranks','line','blocks','wedge','column'][PROG.form|0]||'ranks'; PROG.formId=old; return old; }
 // extra layout hints for the map: the fortress gates for an attacking army
 function formOpt(team){ return GAME.mapId==='fortress'&&team===0&&GAME.mode!=='survival'?{gates:FORT_GATES.map(g=>g*MS)}:{}; }
 function playerLayout(T,saved,opt){
-  const id=progForm();
-  return validateGroups(layoutFormation(0,autoCounts(id),T,id,null,Object.assign({cav:PROG.cav||FORM_BY[id].cav},formOpt(0),opt||{})),T);
+  return validateGroups(layoutBlocks(0,autoBlocks(),T,Object.assign({cav:PROG.cav||'wings'},formOpt(0),opt||{})),T);
 }
 function enterDeploy(cfg){
   closeModal(); hideCards(); $('#banner').hidden=true;
@@ -183,9 +199,10 @@ function enterDeploy(cfg){
   else if(GAME.terBackup){ TER.k.set(GAME.terBackup.k); TER.own.fill(-1); }
   onTerrainChanged();
   STT=[playerStats(),enemyStats(GAME.enemyUlv)];
-  D.groups=[]; D.nextId=1; D.undo=[]; D.sel=-1; D.selObj.clear(); BSEL.clear(); D.team=GAME.editTeams[0]; D.terrain=false; D.stroke=null;
+  D.groups=[]; D.nextId=1; D.nextBk=1; D.undo=[]; D.sel=-1; D.selObj.clear(); BSEL.clear(); D.team=GAME.editTeams[0]; D.terrain=false; D.stroke=null;
   D.fo=[{form:'ranks',order:null,cav:'wings'},{form:'ranks',order:null,cav:'wings'}];
-  if(GAME.limited){ const id=progForm(); D.fo[0]={form:id,order:null,cav:PROG.cav||FORM_BY[id].cav}; }
+  if(GAME.limited) D.fo[0]={form:'ranks',order:null,cav:PROG.cav||'wings'};
+  D.block=null; D.auto=true;
   const gs=cfg.groups || (cfg.makeGroups?cfg.makeGroups(TER):[]);
   addDeployGroups(gs);
   const av=availableTypes(); if(!av.includes(D.type)) D.type=av[0]||0;
@@ -196,9 +213,10 @@ function enterDeploy(cfg){
   camPreset('iso',!cfg.keepCamera);
   buildDeployDock(); showDock('deploy'); updateHud(true);
 }
-function addDeployGroup(g){ const n={id:D.nextId++,team:g.team,type:g.type,order:g.order||defaultOrder(g.type),cx:g.cx,cz:g.cz,a:g.a,slots:g.slots.slice(),sp:g.sp||UNITS[g.type].sp}; D.groups.push(n); return n; }
+function addDeployGroup(g){ const n={id:D.nextId++,team:g.team,type:g.type,order:g.order||defaultOrder(g.type),cx:g.cx,cz:g.cz,a:g.a,slots:g.slots.slice(),sp:g.sp||UNITS[g.type].sp}; if(g.bk){ n.bk=g.bk; n.bn=g.bn||''; n.bkind=g.bkind||''; } D.groups.push(n); return n; }
 // add a layout's regiments, keeping commanders and medics linked to the regiment they stand inside
-function addDeployGroups(gs){ const made=new Map(); for(const g of gs) made.set(g,addDeployGroup(g)); for(const g of gs) if(g.embedOf&&made.has(g.embedOf)) made.get(g).withId=made.get(g.embedOf).id; }
+// each layout numbers its blocks from 1; they get fresh numbers here so blocks never merge
+function addDeployGroups(gs){ const made=new Map(), bm=new Map(); for(const g of gs){ const n=addDeployGroup(g); if(g.bk){ const key=g.team+':'+g.bk; if(!bm.has(key)) bm.set(key,D.nextBk++); n.bk=bm.get(key); } made.set(g,n); } for(const g of gs) if(g.embedOf&&made.has(g.embedOf)) made.get(g).withId=made.get(g.embedOf).id; }
 // a selection plus the officers and medics inside the selected regiments
 function withLinked(list){ const ids=new Set(list.map(g=>g.id)); return list.concat(D.groups.filter(g=>g.withId&&ids.has(g.withId)&&!list.includes(g))); }
 function syncDeploy(){
@@ -297,6 +315,7 @@ function validateGroupsAny(gs){ for(const g of gs){ const keep=[]; for(let k=0;k
 // an army reduced to a tenth of its strength and heavily outnumbered breaks and flees for good
 function checkBreak(t,start){ if(!B.rules.morale||B.broken[t]) return; const a=B.active[t]; if(a>0 && a<=Math.max(2,start*0.1) && a<B.active[t^1]*0.25) breakArmy(t); }
 function afterTick(){
+  if(tick%40===20&&GAME.phase==='battle'){ const m=mergeBlocks(); const mine=m.filter(x=>x[0]===0||(!GAME.limited&&GAME.editTeams.length>1)); if(mine.length) toast(mine.length===1?`Two weakened ${mine[0][1].toLowerCase()} blocks merged into one`:`${mine.length} pairs of weakened blocks merged`,2200); if(m.length){ refreshHighlight(); renderGroupPanel(); } }
   if(stakesChanged){ stakesChanged=false; GAME.stakesDirty=true; }
   if(GAME.ended) return;
   if(GAME.mode==='endless'){
@@ -350,10 +369,8 @@ function settleRewards(){
     }
   } else if(GAME.mode==='endless'){ if(GAME.wave-1>PROG.best.endless) PROG.best.endless=GAME.wave-1; }
   else if(GAME.mode==='survival'){ const b=Math.floor(GAME.survT/10)*15; lines.push(['Time held',b]); total+=b; if(GAME.survT>PROG.best.survival) PROG.best.survival=Math.floor(GAME.survT); }
-  // soldiers who fled off the field have deserted: they leave the roster for good
   let deserted=0;
-  // (soldiers still running when the battle ends are rounded up; Endless and Survival never cost deserters)
-  if(GAME.limited&&GAME.mode==='campaign'){ for(let ty=0;ty<NT;ty++){ const n=B.escT[0][ty]; if(!n) continue; const id=UNITS[ty].id; const had=PROG.roster[id]||0; const lost=Math.min(had,n); PROG.roster[id]=had-lost; deserted+=lost; } }
+  // (blocks return at full strength for the next battle, so nobody is lost for good)
   PROG.gold+=total; saveProg();
   GAME.settled={lines,total,deserted}; return GAME.settled;
 }
@@ -519,7 +536,13 @@ function setSel(list,add){
   if(s.length && GAME.editTeams.length>1 && s[0].team!==D.team){ D.team=s[0].team; buildDeployDock(); }
   refreshHighlight(); renderGroupPanel();
 }
-function selectGroup(gi,add){ setSel(gi>=0&&D.groups[gi]?[D.groups[gi]]:[],add); }
+// a tap selects the whole block a regiment belongs to; a second tap on a selected block picks out that one regiment
+const blockMates=g=>g.bk?D.groups.filter(x=>x.bk===g.bk):[g];
+function selectGroup(gi,add,single){ const g=gi>=0?D.groups[gi]:null; if(!g){ setSel([],add); return; }
+  const list=single?[g]:blockMates(g);
+  if(add&&list.length>1&&list.every(x=>D.selObj.has(x))){ list.forEach(x=>D.selObj.delete(x)); setSel([],true); return; }
+  setSel(list,add); }
+const battleMates=gi=>{ const g=G[gi]; return g&&g.bk?G.map((x,k)=>k).filter(k=>G[k].bk===g.bk&&G[k].team===g.team&&G[k].cnt>0):[gi]; };
 const battleTeams=()=>GAME.limited?[0]:[0,1];
 function setBattleSel(list,add){ if(!add) BSEL.clear(); for(const gi of list){ if(add&&list.length===1&&BSEL.has(gi)) BSEL.delete(gi); else BSEL.add(gi); } refreshHighlight(); renderGroupPanel(); }
 function setBattleOrder(gi,k){ const g=G[gi]; if(!g) return; g.order=k; const st=STT[g.team][g.type]; if(st.aura||st.heal){ if(k===O_ADV) attachEscort(g); else g.host=null; } if(k===O_FLANK){ g.phase=0; g.tmr=0; assignFlankSides(); } }
@@ -536,10 +559,12 @@ function boxSelect(a,b,add){
   const inside=(x,y,z)=>{ const q=projW(x,y,z); return q&&q[0]>=x0&&q[0]<=x1&&q[1]>=y0&&q[1]<=y1; };
   if(GAME.phase==='deploy'){
     const hit=D.groups.filter(g=>{ if(g.team!==D.team||!GAME.editTeams.includes(g.team)) return false; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(inside(wx,heightAt(wx,wz)+1,wz)) return true; } return false; });
-    if(!add) D.selObj.clear(); setSel(hit.filter(g=>!D.selObj.has(g)),true);
+    const all=new Set(); for(const g of hit) for(const m of blockMates(g)) all.add(m);
+    if(!add) D.selObj.clear(); setSel([...all].filter(g=>!D.selObj.has(g)),true);
   } else {
     const t=battleTeams(), hit=new Set(); for(let i=0;i<N;i++){ if(SS[i]!==1||!t.includes(TM[i])||hit.has(GR[i])) continue; if(inside(PX[i],PY[i]+1,PZ[i])) hit.add(GR[i]); }
-    if(!add) BSEL.clear(); setBattleSel([...hit].filter(gi=>!BSEL.has(gi)),true);
+    const all=new Set(); for(const gi of hit) for(const k of battleMates(gi)) all.add(k);
+    if(!add) BSEL.clear(); setBattleSel([...all].filter(gi=>!BSEL.has(gi)),true);
   }
 }
 function groupBounds(g,dx,dz){ let ok=true; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(!inZone(wx+dx,wz+dz,g.team)){ ok=false; break; } } return ok; }
@@ -579,26 +604,51 @@ const FORM_ICONS={
   assault:'<rect x="0.5" y="11" width="23" height="2" opacity=".45"/><rect x="2" y="15" width="5" height="7" rx="1"/><rect x="9.5" y="15" width="5" height="7" rx="1"/><rect x="17" y="15" width="5" height="7" rx="1"/><path d="M4.5 3l2.5 4h-5zM12 3l2.5 4h-5zM19.5 3l2.5 4h-5z"/>',
   column:'<rect x="8" y="1.5" width="8" height="4.2" rx="1"/><rect x="8" y="7.2" width="8" height="4.2" rx="1"/><rect x="8" y="12.9" width="8" height="4.2" rx="1"/><rect x="8" y="18.6" width="8" height="4.2" rx="1"/>',
 };
+const BLOCK_ICONS={line:FORM_ICONS.ranks,square:FORM_ICONS.square,shieldwall:FORM_ICONS.shieldwall,wedge:FORM_ICONS.wedge,column:FORM_ICONS.column,missile:FORM_ICONS.screen,
+  battery:[2,9.5,17].map(x=>`<rect x="${x-1.5}" y="5" width="3" height="8" rx="1"/><circle cx="${x}" cy="15.5" r="2.6"/>`).join('')+'<rect x="2" y="20" width="20" height="2" rx="1" opacity=".5"/>',
+  guard:'<path d="M3 8l4 3 5-7 5 7 4-3-2 10H5z"/><rect x="5" y="19.5" width="14" height="2.5" rx="1"/>',
+  horse:'<path d="M2 13l5-6 5 6h-3.2L7 10.8 5.2 13z"/><path d="M12 13l5-6 5 6h-3.2L17 10.8 15.2 13z"/><path d="M7 21l5-6 5 6h-3.2L12 18.8 10.2 21z"/>'};
+const blockIcon=id=>`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${BLOCK_ICONS[id]}</svg>`;
 const formIcon=id=>`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${FORM_ICONS[id]}</svg>`;
 const editTeam=()=>GAME.limited?0:D.team;
-const teamCounts=t=>GAME.limited&&t===0?autoCounts(D.fo[0].form):(D.comp[t]||new Array(NT).fill(0));
-// the infantry and missile types present, in this side's front-to-back order
-function bandTypes(t){ const c=teamCounts(t); const present=UNITS.map((u,k)=>k).filter(k=>c[k]>0&&(UNITS[k].cls==='inf'||UNITS[k].cls==='rng')).map(k=>UNITS[k].id);
-  const o=(D.fo[t].order||formationOrder(D.fo[t].form)).filter(id=>present.includes(id)); for(const id of present) if(!o.includes(id)) o.splice(BAND_ORDER.includes(id)?Math.min(o.length,BAND_ORDER.indexOf(id)):o.length,0,id); return o; }
+const teamCounts=t=>GAME.limited&&t===0?autoCounts():(D.comp[t]||new Array(NT).fill(0));
+// Auto army: lays out every soldier this side can field in line regiments with horse on the wings
 function relayout(t){
   D.selObj.clear(); D.sel=-1;
   let gs;
   if(GAME.limited&&GAME.mode==='survival'&&t===0) gs=layoutSurvival(autoCounts(),TER);
-  else { const f=D.fo[t]; gs=layoutFormation(t,teamCounts(t),TER,f.form,bandTypes(t),Object.assign({cav:f.cav},formOpt(t))); }
-  gs=validateGroups(gs,TER); D.groups=D.groups.filter(g=>g.team!==t); addDeployGroups(gs);
-  if(GAME.limited&&t===0){ const f=D.fo[0]; PROG.formId=f.form; PROG.order=null; PROG.cav=f.cav; saveProg(); }
+  else if(GAME.limited&&t===0) gs=layoutBlocks(0,autoBlocks(),TER,Object.assign({cav:D.fo[0].cav,zone:GAME.zones[0]||undefined},formOpt(0)));
+  else gs=layoutAuto(t,teamCounts(t),TER,Object.assign({cav:D.fo[t].cav},formOpt(t)));
+  gs=validateGroups(gs,TER); D.groups=D.groups.filter(g=>g.team!==t); addDeployGroups(gs); D.auto=true;
+  if(GAME.limited&&t===0){ PROG.cav=D.fo[0].cav; saveProg(); }
   syncDeploy(); buildDeployDock();
 }
-// choosing a formation brings its own unit order, horse position and orders
-function setFormation(id){ const t=editTeam(), F=FORM_BY[id]; pushUndo(); Object.assign(D.fo[t],{form:id,order:null,cav:F.cav}); relayout(t); toast(`${F.name}: ${F.plan}`,1800); }
+/* ---------- ready-made blocks ---------- */
+// how many blocks of a kind are on the field, and how many you own
+const placedOf=(id,t)=>new Set(D.groups.filter(g=>g.team===t&&g.bkind===id).map(g=>g.bk)).size;
+const ownedOf=id=>blockOK(id)?(PROG.blocks[id]||0):0;
+function deployCountsOf(t){ return deployCounts(t); }
+function roomLeft(t){ return GAME.limited&&t===0?Math.max(0,capOf()-deployCounts(0).total):Math.max(0,MAXU-2000-D.groups.reduce((a,g)=>a+g.slots.length/3,0)); }
+const sandboxComp=B=>blockComp(B,()=>true,id=>id);
+function armBlock(id){ D.block=D.block===id?null:id; selectGroup(-1); buildDeployDock(); }
+function dropBlock(W){
+  const t=editTeam(), B=BLOCK_BY[D.block]; if(!B) return;
+  if(!inZone(W[0],W[1],t)){ toast('Drop blocks inside your deployment zone, the tinted area on your side of the field.',2600); return; }
+  const lim=GAME.limited&&t===0, counts=lim?progSoldiers(B):sandboxComp(B), n=counts.reduce((a,b)=>a+b,0);
+  if(lim&&placedOf(B.id,0)>=ownedOf(B.id)){ toast(ownedOf(B.id)?`All ${ownedOf(B.id)} of your ${B.name.toLowerCase()} blocks are on the field. Raise more in the Council.`:`You have no ${B.name.toLowerCase()} blocks. Raise them in the Council.`,3200); return; }
+  if(n>roomLeft(t)){ toast(lim?`A ${B.name.toLowerCase()} is ${fmt(n)} soldiers and your army has room for ${fmt(roomLeft(t))} more under the ${fmt(capOf())} limit. Remove a block, or research Logistics.`:'The battlefield is full.',3400); return; }
+  pushUndo();
+  const zn=GAME.zones[t]||[X0+2,X1-2];
+  const gs=validateGroups(layoutBlock(t,counts,TER,B,W,D.groups,zn),TER), placed=gs.reduce((a,g)=>a+g.slots.length/3,0);
+  if(!placed){ D.undo.pop(); toast('There is no open ground for that block there.'); return; }
+  addDeployGroups(gs); D.auto=false; audPlace(); syncDeploy(); buildDeployDock();
+  if(placed<n) toast(`${B.name}: ${fmt(n-placed)} soldiers did not fit on that ground`,2200);
+}
+function setMix(id,m){ if(!PROG.mix) PROG.mix={}; if(m==='auto') delete PROG.mix['b_'+id]; else PROG.mix['b_'+id]=m; saveProg();
+  if(D.auto){ pushUndo(); relayout(0); } else { buildDeployDock(); toast('The mix is used by Auto army. Press it to redo the whole army.',2400); } }
 function setComp(t,ty,v){ pushUndo(); const c=D.comp[t]||(D.comp[t]=new Array(NT).fill(0)); const room=MAXU-2000-D.comp[t^1].reduce((a,b)=>a+b,0)-c.reduce((a,b,k)=>a+(k===ty?0:b),0); c[ty]=clamp(Math.round(v)||0,0,Math.max(0,Math.min(room,8000-c.reduce((a,b,k)=>a+(k===ty?0:b),0)))); relayout(t); }
 function fillComp(t,style,total){ pushUndo(); D.comp[t]=armyCounts(clamp(total|0,0,8000),UNITS.map(u=>u.id),style,mulberry32((Math.random()*1e9)|0)); relayout(t); }
-function clearTeam(){ if(!GAME.limited){ pushUndo(); D.comp[D.team]=new Array(NT).fill(0); relayout(D.team); toast('Army cleared. Undo brings it back.'); return; } pushUndo(); D.groups=D.groups.filter(g=>g.team!==D.team||!GAME.editTeams.includes(g.team)); D.sel=-1; syncDeploy(); refreshDeployUi(); toast('Cleared. Undo brings them back.'); }
+function clearTeam(){ const t=editTeam(); if(!D.groups.some(g=>g.team===t)) return; pushUndo(); D.groups=D.groups.filter(g=>g.team!==t); D.sel=-1; D.selObj.clear(); D.auto=false; syncDeploy(); buildDeployDock(); toast('Field cleared. Drop blocks, or press Auto army. Undo brings them back.',2600); }
 
 /* ---------- map editor ---------- */
 let terrainLast=0;
@@ -631,7 +681,7 @@ function buildDeployDock(){
   const sandbox=GAME.editTeams.length>1;
   $('#sideSeg').hidden=!sandbox; $('#btnTerrain').hidden=!(GAME.mode==='sandbox'||GAME.mode==='custom'); $('#btnResearch').hidden=!GAME.limited;
   const surv=GAME.limited&&GAME.mode==='survival';
-  $('#btnClear').hidden=GAME.limited; $('#compRow').hidden=GAME.limited||D.terrain;
+  $('#btnClear').hidden=false; $('#compRow').hidden=D.terrain;
   $('#sideSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on',+b.dataset.side===D.team));
   $('#btnTerrain').classList.toggle('on',D.terrain); $('#btnTerrain').textContent=D.terrain?'Back to troops':'Map editor';
   const av=availableTypes(); if(!av.includes(D.type)){ const up=UID[currentTier(UNITS[D.type].id)]; D.type=av.includes(up)?up:(av[0]||0); }
@@ -639,14 +689,22 @@ function buildDeployDock(){
   if(D.terrain){
     TERRAIN_TOOLS.forEach(([id,name,col])=>{ const b=document.createElement('button'); b.className='chip'+(D.ttool===id?' on':''); b.innerHTML=`<span class="swatch" style="background:${col}"></span><span class="nm">${name}</span>`; b.onclick=()=>{ D.ttool=id; buildDeployDock(); }; chips.appendChild(b); });
   } else {
-    // front-to-back ordering strip: one tile per infantry or missile type
-    const t=editTeam(), o=bandTypes(t), c=teamCounts(t), red=t===1?' red':'';
-    if(surv){ chips.innerHTML='<div class="hint" style="align-self:center">Survival deploys to hold the wall: infantry block the three gates and missile troops line the wall. Select regiments to move them or change their orders.</div>'; }
-    else if(!o.length){ chips.innerHTML=`<div class="hint" style="align-self:center">${GAME.limited?'Recruit infantry or missile troops in the Council to arrange your ranks.':'Add soldiers above to build this army.'}</div>`; }
-    else { const F=FORM_BY[D.fo[t].form]||FORMATIONS[0];
-      chips.insertAdjacentHTML('beforeend',`<div class="fplan wide" title="${esc(F.desc)}"><b>${F.name}</b><span>${esc(F.desc)}</span><span class="fo">Orders: ${F.plan} · Front to back: ${o.map(id=>UNITS[UID[id]].name).join(' → ')}</span>${GAME.limited&&t===0&&rosterTotal()>capOf()?`<span class="fo">Your roster is over the ${fmt(capOf())} limit, so the troops this formation suits best go first.</span>`:''}</div>`); }
+    // what the armed block does, or how to build the army
+    const t=editTeam(), c=teamCounts(t), red=t===1?' red':'', B=BLOCK_BY[D.block];
+    if(surv) chips.innerHTML='<div class="hint" style="align-self:center">Survival deploys to hold the wall: infantry block the three gates and missile troops line the wall. Select regiments to move them or change their orders, or drop blocks of your own.</div>';
+    if(!surv||B){ const lim=GAME.limited&&t===0, room=roomLeft(t);
+      const tail=lim?`Army <b>${fmt(deployCounts(0).total)}</b> of ${fmt(capOf())} · room for <b>${fmt(room)}</b> more.`:'';
+      if(B){ const pv=lim?progSoldiers(B):sandboxComp(B);
+        const mix=UNITS.map((u,i)=>[pv[i],u.name]).filter(p=>p[0]>0).sort((a,b)=>b[0]-a[0]).map(p=>`${p[1].toLowerCase()} ${fmt(p[0])}`).join(', ');
+        const own=lim?` You have ${ownedOf(B.id)}, ${placedOf(B.id,0)} on the field.`:'';
+        chips.innerHTML=`<div class="fplan wide"><b>${B.name} · ${fmt(blockN(B))} soldiers</b><span>${esc(B.desc)}</span><span class="fo">Tap the field to drop one: ${mix}.${own} ${tail}</span></div>`; }
+      else chips.innerHTML=`<div class="fplan wide"><b>Build your army</b><span>Pick a block below and tap the field to drop it, or press Auto army to field everyone. Tap a block on the field to select it; tap it again to pick out one regiment.${lim?' Raise more blocks in the Council.':''}</span>${tail?`<span class="fo">${tail}</span>`:''}</div>`; }
     // army builder for sandbox and custom battles
-    if(!GAME.limited){ const comp=$('#comp'); comp.innerHTML='';
+    if(GAME.limited){ const comp=$('#comp'); comp.innerHTML='<span class="mixlbl" title="How Auto army picks blocks when you own more than the army limit allows">Auto mix</span>';
+      BLOCKS.forEach(B=>{ const own=ownedOf(B.id); if(!own) return; const m=mixOf(B.id), el=document.createElement('div'); el.className='mchip'+(m==='off'?' off':'');
+        el.innerHTML=`<span class="nm">${blockIcon(B.id).replace('<svg ','<svg class="uicon" ')}${B.name}<span class="ct">${placedOf(B.id,0)}/${own}</span></span><span class="mseg" role="group" aria-label="${B.name} mix">${MIX_NAMES.map(([k,n])=>`<button class="${k===m?'on':''}" data-m="${k}" aria-pressed="${k===m}">${n}</button>`).join('')}</span>`;
+        el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>setMix(B.id,b.dataset.m)); comp.appendChild(el); }); }
+    else { const comp=$('#comp'); comp.innerHTML='';
       const fill=document.createElement('div'); fill.className='fill';
       fill.innerHTML=`<select id="fillStyle" aria-label="Army style">${Object.entries(STYLES).map(([k,s])=>`<option value="${k}">${s.name}</option>`).join('')}</select><input type="number" id="fillN" min="0" max="8000" step="100" value="${Math.max(100,c.reduce((a,b)=>a+b,0)||900)}" aria-label="Army size"><button class="btn sm" id="fillGo">Fill</button>`;
       comp.appendChild(fill); comp.insertAdjacentHTML('beforeend','<span class="vsep"></span>');
@@ -667,15 +725,16 @@ function buildDeployDock(){
     tools.append(sel,sz);
   } else {
     const t=editTeam(), f=D.fo[t];
-    if(surv){ const b=document.createElement('button'); b.className='btn sm'; b.textContent='Reset to the wall'; b.onclick=()=>{ pushUndo(); relayout(0); }; tools.appendChild(b); }
-    else {
-      FORMATIONS.forEach(fm=>{ const on=f.form===fm.id, b=document.createElement('button'); b.className='ftile'+(on?' on':''); b.innerHTML=formIcon(fm.id)+`<span>${fm.name}</span>`; b.title=`${fm.name} (front at the top). ${fm.desc} Orders: ${fm.plan}.`; b.setAttribute('aria-pressed',on); b.onclick=()=>setFormation(fm.id); tools.appendChild(b); });
-      tools.insertAdjacentHTML('beforeend','<span class="vsep"></span>');
-      const cav=document.createElement('div'); cav.className='seg'; cav.setAttribute('role','group'); cav.setAttribute('aria-label','Cavalry position'); cav.style.alignSelf='center';
+    const lim=GAME.limited&&t===0;
+    BLOCKS.forEach(bk=>{ if(lim&&!blockOK(bk.id)) return; const on=D.block===bk.id, own=lim?ownedOf(bk.id):-1, b=document.createElement('button'); b.className='ftile'+(on?' on':'')+(own===0?' empty':'');
+      b.innerHTML=blockIcon(bk.id)+`<span>${bk.name}${lim?` ${placedOf(bk.id,0)}/${own}`:''}</span>`;
+      b.title=`${bk.name}, ${blockN(bk)} soldiers. ${bk.desc}`; b.setAttribute('aria-pressed',on); b.onclick=()=>armBlock(bk.id); tools.appendChild(b); });
+    tools.insertAdjacentHTML('beforeend','<span class="vsep"></span>');
+    const au=document.createElement('button'); au.className='btn sm primary'; au.style.alignSelf='center'; au.textContent='Auto army'; au.title='Field your blocks automatically, using the Auto mix when you own more than the army limit allows: front row of foot, missile lines and guns behind, horse on the wings.';
+    au.onclick=()=>{ pushUndo(); D.block=null; relayout(t); }; tools.appendChild(au);
+    if(!surv){ const cav=document.createElement('div'); cav.className='seg'; cav.setAttribute('role','group'); cav.setAttribute('aria-label','Cavalry position for Auto army'); cav.style.alignSelf='center';
       cav.innerHTML=`<button class="btn sm${f.cav!=='rear'?' on':''}" data-cav="wings">Horse on wings</button><button class="btn sm${f.cav==='rear'?' on':''}" data-cav="rear">Horse behind</button>`;
-      cav.querySelectorAll('[data-cav]').forEach(b=>b.onclick=()=>{ pushUndo(); f.cav=b.dataset.cav; relayout(t); }); tools.appendChild(cav);
-
-    }
+      cav.querySelectorAll('[data-cav]').forEach(b=>b.onclick=()=>{ pushUndo(); f.cav=b.dataset.cav; relayout(t); }); tools.appendChild(cav); }
   }
   refreshDeployUi();
 }
@@ -701,19 +760,26 @@ function updateCapBox(){
 function renderGroupPanel(){
   const p=$('#groupPanel'), battle=GAME.phase==='battle';
   let items=[];
-  if(GAME.phase==='deploy') items=selGroups().map(g=>({type:g.type,n:g.slots.length/3,team:g.team,o:Math.max(0,ORDER_IDS.indexOf(g.order))}));
-  else if(battle){ for(const gi of [...BSEL]){ const g=G[gi]; if(!g||g.cnt<=0){ BSEL.delete(gi); continue; } items.push({type:g.type,n:g.cnt,team:g.team,o:g.order}); } }
+  if(GAME.phase==='deploy') items=selGroups().map(g=>({type:g.type,n:g.slots.length/3,team:g.team,o:Math.max(0,ORDER_IDS.indexOf(g.order)),bk:g.bk||0,bn:g.bn||''}));
+  else if(battle){ for(const gi of [...BSEL]){ const g=G[gi]; if(!g||g.cnt<=0){ BSEL.delete(gi); continue; } items.push({type:g.type,n:g.cnt,team:g.team,o:g.order,bk:g.bk||0,bn:g.bn||''}); } }
   if(!items.length){ p.hidden=true; refreshHighlight(); return; }
-  const total=items.reduce((a,x)=>a+x.n,0), same=items.every(x=>x.o===items[0].o), o=same?items[0].o:-1, one=items.length===1, it=items[0];
-  const title=one?`<span style="color:${it.team?'var(--red)':'var(--blue)'}">${unitIcon(it.type)}</span>${UNITS[it.type].name} <span class="hudtext" style="color:var(--muted);font-weight:500">× ${fmt(it.n)}</span>`
+  const fighters=items.filter(x=>UNITS[x.type].cls!=='sup'), oi=fighters.length?fighters:items;
+  const total=items.reduce((a,x)=>a+x.n,0), same=oi.every(x=>x.o===oi[0].o), o=same?oi[0].o:-1, one=items.length===1, it=items[0];
+  const bks=new Set(items.map(x=>x.bk)), oneBlock=!one&&bks.size===1&&items[0].bk>0;
+  const title=oneBlock?`${esc(items[0].bn||'Block')} <span class="hudtext" style="color:var(--muted);font-weight:500">· ${fmt(total)} soldiers in ${fmt(items.length)} regiments</span>`
+    :bks.size>1&&!bks.has(0)?`${fmt(bks.size)} blocks <span class="hudtext" style="color:var(--muted);font-weight:500">· ${fmt(total)} soldiers</span>`
+    :one?`<span style="color:${it.team?'var(--red)':'var(--blue)'}">${unitIcon(it.type)}</span>${UNITS[it.type].name} <span class="hudtext" style="color:var(--muted);font-weight:500">× ${fmt(it.n)}</span>`
     :`${fmt(items.length)} regiments <span class="hudtext" style="color:var(--muted);font-weight:500">· ${fmt(total)} soldiers</span>`;
   p.innerHTML=`<h4>${title}<button class="x" id="gpX" aria-label="Clear selection">×</button></h4>
   <div class="seg" role="group" aria-label="Orders">${ORDER_NAMES.map((n,k)=>`<button class="btn sm${k===o?' on':''}" data-ord="${k}">${n}</button>`).join('')}</div>
-  <div class="hint">${o>=0?ORDER_HELP[o]:'Mixed orders. Pick one to give it to every selected regiment.'}${battle?' Orders take effect at once.':''}</div>
+  <div class="hint">${o>=0?ORDER_HELP[o]:'Mixed orders. Pick one to give it to every selected regiment.'}${battle?' Orders take effect at once.':''}${oneBlock?` Tap the block again to pick out one regiment.`:''}</div>
   ${battle?`<div class="row"><button class="btn sm" id="gpAll">Select all</button></div>`:`<div class="row"><button class="btn sm" id="gpL" aria-label="Turn left">⟲ Turn</button><button class="btn sm" id="gpR" aria-label="Turn right">Turn ⟳</button><button class="btn sm" id="gpAll">Select all</button><div class="spacer"></div><button class="btn sm danger" id="gpDel">Remove</button></div>`}`;
   p.hidden=false;
   p.querySelectorAll('[data-ord]').forEach(b=>b.onclick=()=>{ const k=+b.dataset.ord;
-    if(GAME.phase==='deploy') selGroups().forEach(g=>g.order=ORDER_IDS[k]); else for(const gi of BSEL) setBattleOrder(gi,k);
+    // officers and medics inside a selected block keep marching with it
+    const sup=t=>UNITS[t].cls==='sup';
+    if(GAME.phase==='deploy'){ const sel=selGroups(), mixd=sel.some(g=>!sup(g.type)); sel.forEach(g=>{ if(!(mixd&&sup(g.type))) g.order=ORDER_IDS[k]; }); }
+    else { const sel=[...BSEL], mixd=sel.some(gi=>G[gi]&&!sup(G[gi].type)); for(const gi of sel) if(G[gi]&&!(mixd&&sup(G[gi].type))) setBattleOrder(gi,k); }
     renderGroupPanel(); });
   $('#gpX').onclick=()=>{ if(GAME.phase==='deploy') selectGroup(-1); else setBattleSel([]); };
   $('#gpAll').onclick=selectAll;
@@ -862,7 +928,7 @@ function beginSingle(e,p){
     const W=worldAt(p[0],p[1]);
     if(W && D.terrain){ GST={kind:'terrain'}; terrainBegin(W); return; }
     if(W){ const gi=pickGroup(W);
-      if(gi>=0){ const g=D.groups[gi]; if(e.shiftKey||e.ctrlKey||e.metaKey){ selectGroup(gi,true); return; } if(!D.selObj.has(g)) selectGroup(gi); pushUndo(); GST={kind:'move',last:W,gi}; return; }
+      if(gi>=0){ const g=D.groups[gi]; if(e.shiftKey||e.ctrlKey||e.metaKey){ selectGroup(gi,true); return; } const was=D.selObj.has(g)&&selGroups().length>1&&g.bk; if(!D.selObj.has(g)) selectGroup(gi); pushUndo(); GST={kind:'move',last:W,gi,was}; return; }
       if(e.shiftKey||e.ctrlKey||e.metaKey){ GST={kind:'box',a:p,b:p,add:true}; return; } }
   }
   if(GAME.phase==='battle' && (BSELMODE||e.shiftKey) && e.button===0){ GST={kind:'box',a:p,b:p,add:e.shiftKey}; return; }
@@ -881,7 +947,7 @@ function moveSingle(p){
 function endSingle(o){
   const g=GST; GST=null; if(!g) return;
   const moved=Math.hypot(o.p[0]-o.start[0],o.p[1]-o.start[1]), dt=performance.now()-o.t;
-  if(g.kind==='tool') toolEnd(); else if(g.kind==='terrain') terrainEnd(); else if(g.kind==='move') moveEnd(g.gi);
+  if(g.kind==='tool') toolEnd(); else if(g.kind==='terrain') terrainEnd(); else if(g.kind==='move'){ moveEnd(g.gi); if(g.was&&moved<6&&dt<450){ D.undo.pop(); selectGroup(g.gi,false,true); } }
   else if(g.kind==='pan' && moved<8 && dt<450) tap(o.p);
   else if(g.kind==='box'){ if(moved<6) boxTap(o.p,g.add); else boxSelect(g.a,g.b,g.add); }
 }
@@ -897,10 +963,13 @@ function movePinch(){
 function zoomAt(p,f){ const W0=worldAtPlane(p[0],p[1],CAM.ty); CAM.g.dist=clamp(CAM.g.dist*f,6,CAM_MAX); CAM.follow=-1; snapCam(); if(W0){ const W=worldAtPlane(p[0],p[1],CAM.ty); if(W){ CAM.g.tx+=W0[0]-W[0]; CAM.g.tz+=W0[1]-W[1]; camClamp(CAM.g); snapCam(); } } }
 function boxTap(p,add){ const W=worldAt(p[0],p[1]);
   if(GAME.phase==='deploy'){ if(!add) selectGroup(-1); return; }
-  const i=W?pickUnit(W,2.4,battleTeams()):-1; setBattleSel(i>=0?[GR[i]]:[],add); }
+  const i=W?pickUnit(W,2.4,battleTeams()):-1; if(i<0){ setBattleSel([],add); return; }
+  const gi=GR[i], mates=battleMates(gi), whole=mates.length>1&&mates.every(k=>BSEL.has(k));
+  if(add){ if(whole) mates.forEach(k=>BSEL.delete(k)); else mates.forEach(k=>BSEL.add(k)); refreshHighlight(); renderGroupPanel(); return; }
+  setBattleSel(whole&&BSEL.size===mates.length?[gi]:mates,false); }
 function tap(p){
   const W=worldAt(p[0],p[1]); if(!W) return;
-  if(GAME.phase==='deploy'){ selectGroup(pickGroup(W)); return; }
+  if(GAME.phase==='deploy'){ const gi=pickGroup(W); if(gi<0&&D.block&&!D.terrain){ dropBlock(W); return; } selectGroup(gi); return; }
   inspectUnit(pickUnit(W,2.4,null));
 }
 const KEYS=new Set();
@@ -915,7 +984,7 @@ window.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&k==='a'){ e.preventDefault(); selectAll(); return; }
   if(k==='t'&&$('#modal').hidden){ showCouncil('tech'); return; }
   if(k==='m'){ audSetOn(!AUD.on); renderSoundBtn(); toast(AUD.on?'Sound on':'Sound off',1200); return; }
-  if(k==='escape'){ closeModal(); closePops(); if(GAME.phase==='deploy') selectGroup(-1); else setBattleSel([]); inspectUnit(-1); return; }
+  if(k==='escape'){ closeModal(); closePops(); if(GAME.phase==='deploy'){ selectGroup(-1); if(D.block){ D.block=null; buildDeployDock(); } } else setBattleSel([]); inspectUnit(-1); return; }
   KEYS.add(k);
 });
 window.addEventListener('keyup',e=>KEYS.delete(e.key.toLowerCase()));
@@ -958,7 +1027,7 @@ function showBattles(tab){
     const top=PROG.level; const rows=[];
     for(let L=1;L<=Math.min(top+1,CAMPAIGN_LEN);L++){ const cl=campaignLevel(L), locked=L>top, won=PROG.won[L];
       rows.push(`<div class="lrow${locked?' locked':''}"><div class="no">${L}</div><div style="min-width:0"><div class="t">${cl.name}</div><div class="m">${cl.final?'Final battle · ':''}${MAPS.find(m=>m.id===cl.mapId).name} · ${fmt(cl.count)} enemies · ${STYLES[cl.style].name.toLowerCase()} · reward ${fmt(cl.reward)}${won?' · <span class="won">won</span>':''}</div></div>${locked?'<span class="hint">Win battle '+(L-1)+'</span>':`<button class="btn sm${L===top?' primary':''}" data-camp="${L}">${won?'Replay':'Deploy'}</button>`}</div>`); }
-    body=`<p class="lede">${campaignDone()?`You have won the war. Replay any battle, or take your army into Endless and Survival.`:`Battle ${Math.min(top,CAMPAIGN_LEN)} of ${CAMPAIGN_LEN}.`} Your army: <b>${fmt(rosterTotal())}</b> soldiers in the roster, up to <b>${fmt(capOf())}</b> on the field at once. Enemies grow about 30% larger each battle. The fallen recover between battles, but soldiers who flee the field desert for good.</p><div class="list" id="campList">${rows.reverse().join('')}</div>
+    body=`<p class="lede">${campaignDone()?`You have won the war. Replay any battle, or take your army into Endless and Survival.`:`Battle ${Math.min(top,CAMPAIGN_LEN)} of ${CAMPAIGN_LEN}.`} Your army: <b>${fmt(Object.values(PROG.blocks).reduce((a,b)=>a+b,0))}</b> blocks, <b>${fmt(rosterTotal())}</b> soldiers, up to <b>${fmt(capOf())}</b> on the field at once. Enemies grow about 30% larger each battle. Every block returns at full strength after a battle.</p><div class="list" id="campList">${rows.reverse().join('')}</div>
     <div class="resetrow"><span class="hint">Start again from battle 1 with a fresh army. Gold, soldiers, research, upgrades and best scores are wiped${CLOUD.on?' on every device signed in to your account':''}. Saved layouts are kept.</span><button class="btn sm danger" id="bReset">Reset progress</button></div>`;
   } else if(tab==='endless'){
     body=`<p class="lede">Deploy your roster and hold out against waves that grow 25% larger every round. Between waves your survivors heal fully and a third of the fallen return as reinforcements. Each broken wave pays a bonus. Best: <b>${PROG.best.endless}</b> waves.</p>
@@ -1008,11 +1077,13 @@ function showCouncil(tab){
   const ps=computeStats(upgLv,PROG.tech);
   let body='';
   if(tab==='recruit'){
-    const rows=UNITS.map((u,i)=>{ if(!fieldable(u.id)) return ''; const s=ps[i], own=PROG.roster[u.id]||0;
-      const b=n=>{ const c=u.cost*n; return `<button class="btn sm" data-buy="${u.id}" data-n="${n}"${PROG.gold<c?' disabled':''}>+${n} · ${fmt(c)}</button>`; };
-      const big=capOf()>=2000?b(1000):'';
-      return `<div class="rec">${unitIcon(i)}<div style="min-width:0"><div class="t">${u.name}<small>${u.role}</small></div><div class="st">HP ${Math.round(s.hp)} · ARM ${s.armor.toFixed(1).replace('.0','')} · DMG ${Math.round(s.dmg)} · RNG ${u.isR?Math.round(s.range):s.range.toFixed(1)} · SPD ${s.speed.toFixed(1)} · ${u.cost}g each</div></div><div><div class="own"><b>${fmt(own)}</b> owned</div><div class="buy">${u.cls==='sie'?b(1)+b(5):b(10)+b(100)}${big}</div></div></div>`; }).join('');
-    body=`<p class="lede">Recruits join your roster permanently. You can field up to <b>${fmt(capOf())}</b> at once; research Logistics to raise the cap. Roster: <b>${fmt(rosterTotal())}</b>.</p><div class="list">${rows}</div>`;
+    const rows=BLOCKS.map(B=>{ const ok=blockOK(B.id), own=PROG.blocks[B.id]||0, c=progSoldiers(B), cost=blockCost(B);
+      const mix=UNITS.map((u,i)=>[c[i],u.name]).filter(p=>p[0]>0).sort((a,b)=>b[0]-a[0]).map(p=>`${p[1]} ${fmt(p[0])}`).join(' · ');
+      const b=n=>`<button class="btn sm" data-buy="${B.id}" data-n="${n}"${PROG.gold<cost*n?' disabled':''}>+${n} · ${fmt(cost*n)}</button>`;
+      const need=B.req.filter(r=>!owned(r)).map(r=>TECHBY[r]?TECHBY[r].name:r);
+      return `<div class="rec brec${ok?'':' locked'}">${blockIcon(B.id).replace('<svg ','<svg class="uicon" ')}<div style="min-width:0"><div class="t">${B.name}<small>${fmt(blockN(B))} soldiers</small></div><div class="st">${esc(B.desc)}</div><div class="comp">${mix}</div></div><div><div class="own">${own?`<b>${own}</b> owned`:'&nbsp;'}</div><div class="buy">${ok?b(1)+b(5)+(capOf()>=3000?b(20):''):`<span class="hint">Research ${need.join(', ')}</span>`}</div></div></div>`; }).join('');
+    const nb=Object.values(PROG.blocks).reduce((a,b)=>a+b,0);
+    body=`<p class="lede">Soldiers are raised in blocks: fixed groups with their own mix and shape. Each block comes back at full strength after every battle, and researching a better unit re-equips every block that uses it. You can field up to <b>${fmt(capOf())}</b> soldiers at once; research Logistics to raise the limit. You own <b>${fmt(nb)}</b> blocks, <b>${fmt(rosterTotal())}</b> soldiers.</p><div class="list">${rows}</div>`;
   } else if(tab==='tech'){
     const cols=BRANCHES.map((bn,b)=>{ const nodes=TECH.filter(t=>t.b===b).map(t=>{ const own=owned(t.id), avail=!own&&t.req.every(owned);
       const u=t.unit?UNITS[UID[t.unit]]:null;
@@ -1032,11 +1103,11 @@ function showCouncil(tab){
   <div class="tabs">${tabs.map(([k,n])=>`<button class="tab${k===tab?' on':''}" data-tab="${k}">${n}</button>`).join('')}</div>${body}`,s=>{
     $('#cX').onclick=closeModal; const cn=s.querySelector('#cNext'); if(cn) cn.onclick=()=>nextAction()[1]();
     s.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>showCouncil(b.dataset.tab));
-    s.querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>{ const id=b.dataset.buy, n=+b.dataset.n, c=UNITS[UID[id]].cost*n; if(PROG.gold<c) return; PROG.gold-=c; PROG.roster[id]=(PROG.roster[id]||0)+n; saveProg(); keepScroll(()=>showCouncil('recruit')); afterProgressChange(); });
+    s.querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>{ const id=b.dataset.buy, n=+b.dataset.n, c=blockCost(BLOCK_BY[id])*n; if(PROG.gold<c||!blockOK(id)) return; PROG.gold-=c; PROG.blocks[id]=(PROG.blocks[id]||0)+n; normalizeRoster(); saveProg(); keepScroll(()=>showCouncil('recruit')); afterProgressChange(); });
     s.querySelectorAll('[data-tech]').forEach(b=>b.onclick=()=>{ const t=TECHBY[b.dataset.tech]; if(PROG.gold<t.cost) return; PROG.gold-=t.cost; PROG.tech[t.id]=true; let msg=`${t.name} researched`;
-      if(t.unit){ const prev=PREV_TIER[t.unit], conv=prev?(PROG.roster[prev]||0):0;
-        if(conv){ PROG.roster[t.unit]=(PROG.roster[t.unit]||0)+conv; PROG.roster[prev]=0; msg=`Your ${fmt(conv)} ${UNITS[UID[prev]].name.toLowerCase()} are now ${t.name.toLowerCase()}`; }
-        else if(!PROG.roster[t.unit]){ PROG.roster[t.unit]=UNITS[UID[t.unit]].cls==='sie'?2:UNITS[UID[t.unit]].cls==='sup'?3:10; msg+='. A few recruits have joined.'; } }
+      if(t.unit){ const prev=PREV_TIER[t.unit], conv=prev&&t.unit!=='elite'?(PROG.roster[prev]||0):0; normalizeRoster();
+        if(conv) msg=`Your ${fmt(conv)} ${UNITS[UID[prev]].name.toLowerCase()} are now ${t.name.toLowerCase()}`;
+        else { const nb=BLOCKS.filter(B=>B.req.includes(t.unit)&&blockOK(B.id)).map(B=>B.name); if(nb.length) msg+=`. You can now raise ${nb.join(' and ')} blocks.`; } }
       saveProg(); toast(msg,3000); keepScroll(()=>showCouncil('tech')); afterProgressChange(); });
     s.querySelectorAll('[data-upg]').forEach(b=>b.onclick=()=>{ const [c,st]=b.dataset.upg.split('_'), lv=upgLv(c,st), cost=upgCost(c,st,lv); if(PROG.gold<cost||lv>=UPG_MAX) return; PROG.gold-=cost; PROG.upg[c+'_'+st]=lv+1; saveProg(); keepScroll(()=>showCouncil('upgrades')); afterProgressChange(); });
   });
@@ -1044,7 +1115,7 @@ function showCouncil(tab){
 function keepScroll(fn){ const s=$('#sheet'), y=s.scrollTop, tree=s.querySelector('.tree'), tx=tree?tree.scrollLeft:0; fn(); s.scrollTop=y; const t2=s.querySelector('.tree'); if(t2) t2.scrollLeft=tx; }
 // wipe the campaign and the army, keeping only saved layouts
 function resetProgress(){ const saves=PROG.saves||[]; PROG=defaultProg(); PROG.saves=saves; saveProg(); normalizeRoster(); openCampaign(1); toast('Progress reset. A fresh army stands ready for battle 1.',3200); }
-function afterProgressChange(){ updateHud(true); if(GAME.phase==='deploy'&&GAME.limited){ STT[0]=playerStats(); for(const g of D.groups) if(g.team===0) g.type=UID[currentTier(UNITS[g.type].id)]; syncDeploy(); buildDeployDock(); } }
+function afterProgressChange(){ normalizeRoster(); updateHud(true); if(GAME.phase==='deploy'&&GAME.limited){ STT[0]=playerStats(); for(const g of D.groups) if(g.team===0) g.type=UID[blockTier(UNITS[g.type].id)]; syncDeploy(); buildDeployDock(); } }
 // what "continue" means after a battle, so the player is never stuck on the results
 function nextAction(){
   if(GAME.mode==='campaign'){ const L=GAME.level, won=GAME.winner===0;
