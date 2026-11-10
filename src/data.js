@@ -649,11 +649,7 @@ const BLOCKS=[
   desc:'A squadron of horse. Rides round the enemy flank to hit them from behind.'},
 ];
 const BLOCK_BY={}; BLOCKS.forEach(b=>BLOCK_BY[b.id]=b);
-// a block's soldiers by type. has(id): is this unit researched; tier(id): its newest tier
-function blockComp(B,has,tier){ const out=new Array(NT).fill(0); let first=-1;
-  for(const [n,pref] of B.comp){ let t=-1; for(const id of pref.split('|')) if(has(id)){ t=UID[tier(id)]; break; }
-    if(t<0) t=first; if(t<0) continue; if(first<0) first=t; out[t]+=n; }
-  return out; }
+const blockN=B=>B.comp.reduce((a,c)=>a+c[0],0);
 // take n soldiers from the pool, shared out in proportion to pool size × weight
 function fillPick(out,pool,n,w){
   const fill=x=>{ let s=0; for(let i=0;i<NT;i++) if(w[i]>0) s+=Math.min(pool[i]-out[i],x*pool[i]*w[i]); return s; };
@@ -665,6 +661,24 @@ function fillPick(out,pool,n,w){
   const ord=[]; for(let i=0;i<NT;i++) if(w[i]>0&&out[i]<pool[i]) ord.push([ex[i]-Math.floor(ex[i]),i]); ord.sort((a,b)=>b[0]-a[0]);
   for(let j=0;got<n&&j<ord.length;j++){ out[ord[j][1]]++; got++; }
   return got;
+}
+// the soldiers a formation takes from a reserve pool: each slot is filled from its preferred units
+// (any tier of their upgrade line, newest first), then the fallbacks; short slots leave the formation
+// smaller. At most `room` soldiers in all.
+function fillBlock(B,pool,room){
+  const out=new Array(NT).fill(0), cand=id=>{ const L=LINES.find(l=>l.includes(id)); return (L?L.slice().reverse():[id]).map(x=>UID[x]); };
+  for(const [n,pref] of B.comp){ let need=n;
+    for(const id of pref.split('|')){ for(const t of cand(id)){ const k=Math.min(need,pool[t]-out[t]); if(k>0){ out[t]+=k; need-=k; } if(!need) break; } if(!need) break; }
+    // still short: any other foot (or missile troops, horse, guns) of the same class in reserve
+    const cls=UNITS[UID[pref.split('|')[0]]].cls;
+    if(need&&cls!=='sup') for(let t=0;t<NT&&need;t++) if(UNITS[t].cls===cls&&t!==UID.elite){ const k=Math.min(need,pool[t]-out[t]); if(k>0){ out[t]+=k; need-=k; } } }
+  // a battery without guns, or horse without horses, is not that formation at all
+  if(B.id==='battery'&&!UNITS.some((u,i)=>u.cls==='sie'&&out[i])) out.fill(0);
+  if(B.id==='missile'&&!UNITS.some((u,i)=>u.cls==='rng'&&out[i])) out.fill(0);
+  if(B.id==='guard'&&!out[UID.elite]) out.fill(0);
+  const tot=out.reduce((a,b)=>a+b,0);
+  if(tot>room){ const full=out.slice(), f=room/tot; let left=room; for(let i=0;i<NT;i++){ out[i]=Math.floor(full[i]*f); left-=out[i]; } for(let i=0;left>0&&i<NT;i++) if(out[i]<full[i]){ out[i]++; left--; } }
+  return out;
 }
 function groupsExtent(gs){ let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
   for(const g of gs) for(let k=0;k<g.slots.length;k+=3){ const p=localToWorld(g,g.slots[k],g.slots[k+1]); if(p[0]<x0)x0=p[0]; if(p[0]>x1)x1=p[0]; if(p[1]<z0)z0=p[1]; if(p[1]>z1)z1=p[1]; }

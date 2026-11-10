@@ -123,23 +123,11 @@ button{font:inherit;color:inherit}
 .cchip button{width:26px;height:24px;border-radius:5px;border:1px solid var(--line2);background:var(--raise2);color:var(--fg);cursor:pointer;font-size:15px;line-height:1}
 .cchip input{width:62px;padding:3px 4px;font-size:13px;text-align:center;font-variant-numeric:tabular-nums}
 #tools .seg,#tools>.btn{flex:0 0 auto;white-space:nowrap}
-.mixlbl{flex:0 0 auto;align-self:center;font-family:var(--f-ui);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--brass-hi);padding-right:2px}
-.mchip{flex:0 0 auto;display:flex;flex-direction:column;gap:3px;border-radius:8px;border:1px solid var(--line2);background:var(--raise);padding:4px 6px;color:var(--blue)}
-.mchip.off{opacity:.55}
-.mchip .nm{display:flex;align-items:center;gap:4px;font-family:var(--f-ui);font-weight:600;font-size:12px;color:var(--fg);white-space:nowrap}
-.mchip .nm .uicon{width:16px;height:16px}
-.mchip .ct{margin-left:auto;padding-left:6px;font-weight:500;color:var(--muted);font-variant-numeric:tabular-nums}
-.mseg{display:flex;border:1px solid var(--line2);border-radius:5px;overflow:hidden}
-.mseg button{flex:1;border:0;background:var(--raise2);color:var(--muted);font:500 11.5px var(--f-ui);padding:3px 6px;cursor:pointer;min-height:24px}
-.mseg button+button{border-left:1px solid var(--line2)}
-.mseg button.on{background:#2c2818;color:var(--brass-hi)}
-.mseg button[data-m="off"].on{color:var(--warn)}
 .fill{display:flex;align-items:center;gap:5px;flex:0 0 auto}
 .fill select,.fill input{width:auto;padding:5px 6px;font-size:13px}
 .fill input{width:74px}
 .chip.on{border-color:var(--brass);background:#262418;box-shadow:inset 0 0 0 1px #d4a84a55}
 .chip.empty,.ftile.empty{opacity:.45}
-.brec .comp{font-size:12.5px;color:var(--muted);margin-top:2px}
 .uicon{width:24px;height:24px;display:block}
 .tool{flex:0 0 auto;min-width:50px;height:46px;border-radius:8px;border:1px solid transparent;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;color:var(--muted);padding:0 4px}
 .tool svg{width:21px;height:21px}
@@ -1021,11 +1009,7 @@ const BLOCKS=[
   desc:'A squadron of horse. Rides round the enemy flank to hit them from behind.'},
 ];
 const BLOCK_BY={}; BLOCKS.forEach(b=>BLOCK_BY[b.id]=b);
-// a block's soldiers by type. has(id): is this unit researched; tier(id): its newest tier
-function blockComp(B,has,tier){ const out=new Array(NT).fill(0); let first=-1;
-  for(const [n,pref] of B.comp){ let t=-1; for(const id of pref.split('|')) if(has(id)){ t=UID[tier(id)]; break; }
-    if(t<0) t=first; if(t<0) continue; if(first<0) first=t; out[t]+=n; }
-  return out; }
+const blockN=B=>B.comp.reduce((a,c)=>a+c[0],0);
 // take n soldiers from the pool, shared out in proportion to pool size × weight
 function fillPick(out,pool,n,w){
   const fill=x=>{ let s=0; for(let i=0;i<NT;i++) if(w[i]>0) s+=Math.min(pool[i]-out[i],x*pool[i]*w[i]); return s; };
@@ -1037,6 +1021,24 @@ function fillPick(out,pool,n,w){
   const ord=[]; for(let i=0;i<NT;i++) if(w[i]>0&&out[i]<pool[i]) ord.push([ex[i]-Math.floor(ex[i]),i]); ord.sort((a,b)=>b[0]-a[0]);
   for(let j=0;got<n&&j<ord.length;j++){ out[ord[j][1]]++; got++; }
   return got;
+}
+// the soldiers a formation takes from a reserve pool: each slot is filled from its preferred units
+// (any tier of their upgrade line, newest first), then the fallbacks; short slots leave the formation
+// smaller. At most `room` soldiers in all.
+function fillBlock(B,pool,room){
+  const out=new Array(NT).fill(0), cand=id=>{ const L=LINES.find(l=>l.includes(id)); return (L?L.slice().reverse():[id]).map(x=>UID[x]); };
+  for(const [n,pref] of B.comp){ let need=n;
+    for(const id of pref.split('|')){ for(const t of cand(id)){ const k=Math.min(need,pool[t]-out[t]); if(k>0){ out[t]+=k; need-=k; } if(!need) break; } if(!need) break; }
+    // still short: any other foot (or missile troops, horse, guns) of the same class in reserve
+    const cls=UNITS[UID[pref.split('|')[0]]].cls;
+    if(need&&cls!=='sup') for(let t=0;t<NT&&need;t++) if(UNITS[t].cls===cls&&t!==UID.elite){ const k=Math.min(need,pool[t]-out[t]); if(k>0){ out[t]+=k; need-=k; } } }
+  // a battery without guns, or horse without horses, is not that formation at all
+  if(B.id==='battery'&&!UNITS.some((u,i)=>u.cls==='sie'&&out[i])) out.fill(0);
+  if(B.id==='missile'&&!UNITS.some((u,i)=>u.cls==='rng'&&out[i])) out.fill(0);
+  if(B.id==='guard'&&!out[UID.elite]) out.fill(0);
+  const tot=out.reduce((a,b)=>a+b,0);
+  if(tot>room){ const full=out.slice(), f=room/tot; let left=room; for(let i=0;i<NT;i++){ out[i]=Math.floor(full[i]*f); left-=out[i]; } for(let i=0;left>0&&i<NT;i++) if(out[i]<full[i]){ out[i]++; left--; } }
+  return out;
 }
 function groupsExtent(gs){ let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
   for(const g of gs) for(let k=0;k<g.slots.length;k+=3){ const p=localToWorld(g,g.slots[k],g.slots[k+1]); if(p[0]<x0)x0=p[0]; if(p[0]>x1)x1=p[0]; if(p[1]<z0)z0=p[1]; if(p[1]>z1)z1=p[1]; }
@@ -2706,33 +2708,11 @@ const owned=id=>!!PROG.tech[id];
 const superseded=id=>!!(NEXT_TIER[id]&&PROG.tech[NEXT_TIER[id]]);
 const currentTier=id=>{ while(NEXT_TIER[id]&&PROG.tech[NEXT_TIER[id]]) id=NEXT_TIER[id]; return id; };
 const fieldable=id=>owned(id)&&!superseded(id);
-// The army is a list of blocks. The roster of soldiers is worked out from them, always at the newest tier.
+// move soldiers of retired tiers into the newest tier of their line (also upgrades older saves;
+// saves from the short-lived block roster keep the soldiers those blocks held)
+function normalizeRoster(){ delete PROG.blocks; for(const line of LINES){ let top=null; for(const id of line) if(PROG.tech[id]) top=id; if(!top) continue;
+  for(const id of line){ if(id===top) break; const n=PROG.roster[id]||0; if(n){ PROG.roster[top]=(PROG.roster[top]||0)+n; PROG.roster[id]=0; } } } }
 const blockOK=id=>BLOCK_BY[id].req.every(owned);
-// champions are too costly to fill ordinary blocks: those stop at heavy infantry, and champions have a block of their own
-const blockTier=id=>{ const t=currentTier(id); return t==='elite'&&id!=='elite'?'heavy':t; };
-const progSoldiers=B=>blockComp(B,owned,blockTier);
-const blockCost=B=>progSoldiers(B).reduce((a,n,i)=>a+n*UNITS[i].cost,0);
-const blockN=B=>B.comp.reduce((a,c)=>a+c[0],0);
-// older saves kept loose soldiers: organise them into blocks and refund what is left over
-function rosterToBlocks(r){
-  const sum=ids=>ids.reduce((a,id)=>a+(r[id]||0),0), b={};
-  const cav=sum(['lcav','hcav','lancer']), sie=sum(['cata','mortar','ballista','cannon']), rng=sum(['archer','xbow','musket']);
-  let foot=0; for(const u of UNITS) if(u.cls==='inf'||u.cls==='sup') foot+=r[u.id]||0;
-  if(blockOK('horse')) b.horse=Math.floor(cav/50);
-  if(blockOK('battery')) b.battery=Math.floor(sie/6);
-  b.missile=Math.floor(rng*0.5/80); foot+=rng-b.missile*80;
-  const kinds=['line','square','shieldwall','wedge'].filter(blockOK);
-  for(let k=0;foot>=50&&k<5000;k++){ const id=kinds[k%kinds.length]; b[id]=(b[id]||0)+1; foot-=BLOCK_BY[id].size; }
-  for(const id in b) if(!b[id]) delete b[id];
-  if(!Object.keys(b).length) b.line=1;
-  const value=UNITS.reduce((a,u)=>a+(r[u.id]||0)*u.cost,0), worth=Object.entries(b).reduce((a,[id,n])=>a+n*blockCost(BLOCK_BY[id]),0);
-  if(value>worth) PROG.gold+=Math.round(value-worth);
-  return b;
-}
-function normalizeRoster(){
-  if(!PROG.blocks||typeof PROG.blocks!=='object') PROG.blocks=rosterToBlocks(PROG.roster||{});
-  const r={}; for(const B of BLOCKS){ const n=PROG.blocks[B.id]||0; if(!n) continue; progSoldiers(B).forEach((c,i)=>{ if(c) r[UNITS[i].id]=(r[UNITS[i].id]||0)+c*n; }); }
-  PROG.roster=r; }
 const rosterTotal=()=>UNITS.reduce((a,u)=>a+(PROG.roster[u.id]||0),0);
 function enemyAbilities(lv){ const a={}; if(lv>=1) a.firearrows=1; if(lv>=2) a.shieldwall=1; if(lv>=3) a.thunder=1; if(lv>=4){a.hymn=1;a.surgery=1;} if(lv>=5) a.shells=1; return a; }
 const playerStats=()=>GAME.limited?computeStats(upgLv,PROG.tech):computeStats(lvZero,{});
@@ -2823,30 +2803,28 @@ function markTerrainDirty(){ GAME.terrainDirty=true; }
 /* ---------- modes ---------- */
 function availableTypes(){ return UNITS.map((u,i)=>i).filter(i=>!GAME.limited||fieldable(UNITS[i].id)); }
 function serializeGroups(gs){ return gs.map(g=>({type:UNITS[g.type].id,order:g.order,cx:+g.cx.toFixed(2),cz:+g.cz.toFixed(2),a:+g.a.toFixed(3),sp:+(g.sp||UNITS[g.type].sp).toFixed(3),slots:g.slots.map(v=>+v.toFixed(2)),...(g.bk?{bk:g.bk,bn:g.bn||'',bkind:g.bkind||''}:{})})); }
-function deserializeGroups(arr,team){ const out=[]; for(const g of (arr||[])){ const ty=UID[GAME.limited&&UID[g.type]!==undefined?blockTier(g.type):g.type]; if(ty===undefined||!Array.isArray(g.slots)) continue; out.push({team,type:ty,order:ORDER_IDS.includes(g.order)?g.order:defaultOrder(ty),cx:+g.cx||0,cz:+g.cz||0,a:+g.a||0,sp:+g.sp||UNITS[ty].sp,slots:g.slots.map(Number),...(g.bk?{bk:+g.bk,bn:String(g.bn||'').slice(0,40),bkind:BLOCK_BY[g.bkind]?g.bkind:''}:{})}); } return out; }
+function deserializeGroups(arr,team){ const out=[]; for(const g of (arr||[])){ const ty=UID[GAME.limited&&UID[g.type]!==undefined?currentTier(g.type):g.type]; if(ty===undefined||!Array.isArray(g.slots)) continue; out.push({team,type:ty,order:ORDER_IDS.includes(g.order)?g.order:defaultOrder(ty),cx:+g.cx||0,cz:+g.cz||0,a:+g.a||0,sp:+g.sp||UNITS[ty].sp,slots:g.slots.map(Number),...(g.bk?{bk:+g.bk,bn:String(g.bn||'').slice(0,40),bkind:BLOCK_BY[g.bkind]?g.bkind:''}:{})}); } return out; }
 function inZone(x,z,team){ const zn=GAME.zones[team]; if(!zn) return x>X0+2&&x<X1-2&&z>Z0+2&&z<Z1-2; return x>=zn[0]&&x<=zn[1]&&z>Z0+2&&z<Z1-2; }
 function validateGroups(gs,T){ for(const g of gs){ const keep=[]; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(passAtT(T,wx,wz)&&inZone(wx,wz,g.team)) keep.push(g.slots[k],g.slots[k+1],g.slots[k+2]); } g.slots=keep; } return gs.filter(g=>g.slots.length); }
 function trimToRoster(gs){
   const left={}; UNITS.forEach(u=>left[u.id]=PROG.roster[u.id]||0); let cap=capOf();
-  for(const g of gs){ const id=blockTier(UNITS[g.type].id); g.type=UID[id]; if(!(left[id]>0)){ g.slots=[]; continue; } const n=Math.min(g.slots.length/3,left[id],cap); g.slots.length=n*3; left[id]-=n; cap-=n; }
+  for(const g of gs){ const id=UNITS[g.type].id; if(!fieldable(id)){ g.slots=[]; continue; } const n=Math.min(g.slots.length/3,left[id],cap); g.slots.length=n*3; left[id]-=n; cap-=n; }
   return gs.filter(g=>g.slots.length);
 }
-// the block mix for Auto army: each kind of block can be switched off, halved (Less), left to Auto, or favoured (More)
-const MIX_W={off:0,less:.5,auto:1,more:2.5}, MIX_NAMES=[['off','Off'],['less','Less'],['auto','Auto'],['more','More']];
-const mixOf=id=>(PROG.mix&&PROG.mix['b_'+id])||'auto';
-// the blocks Auto army fields: everything you own, or over the army limit a fair share of each kind
-function autoBlocks(){
-  const cap=capOf(), own=BLOCKS.map(B=>{ const m=mixOf(B.id), n=blockOK(B.id)?(PROG.blocks[B.id]||0):0; return m==='off'?0:m==='less'?Math.ceil(n/2):n; });
-  const w=BLOCKS.map(B=>MIX_W[mixOf(B.id)]), pick=BLOCKS.map(()=>0), size=BLOCKS.map(B=>blockN(B)); let used=0;
-  for(;;){ let best=-1, br=1e9; BLOCKS.forEach((B,k)=>{ if(pick[k]>=own[k]||used+size[k]>cap) return; const r=(pick[k]+0.5)/(own[k]*w[k]); if(r<br){ br=r; best=k; } }); if(best<0) break; pick[best]++; used+=size[best]; }
-  const list=[]; BLOCKS.forEach((B,k)=>{ const c=progSoldiers(B); for(let i=0;i<pick[k];i++) list.push({B,counts:c}); }); return list;
+// the soldiers who take the field. Over the army limit, commanders, medics and engineers all come,
+// then everyone else in proportion to their numbers.
+function rosterPool(){ return UNITS.map(u=>fieldable(u.id)?(PROG.roster[u.id]||0):0); }
+function autoCounts(){
+  const have=rosterPool(), cap=capOf(); if(have.reduce((a,b)=>a+b,0)<=cap) return have;
+  const counts=new Array(NT).fill(0); let room=cap;
+  for(const id of ['cmdr','medic','eng']){ const i=UID[id]; counts[i]=Math.min(have[i],room); room-=counts[i]; }
+  fillPick(counts,have,room,UNITS.map((u,i)=>unitRole(i)==='sup'?0:1));
+  return counts;
 }
-function autoCounts(){ const c=new Array(NT).fill(0); for(const b of autoBlocks()) b.counts.forEach((n,i)=>c[i]+=n); return c; }
-// the formation the player last chose (older saves stored a number)
 // extra layout hints for the map: the fortress gates for an attacking army
 function formOpt(team){ return GAME.mapId==='fortress'&&team===0&&GAME.mode!=='survival'?{gates:FORT_GATES.map(g=>g*MS)}:{}; }
 function playerLayout(T,saved,opt){
-  return validateGroups(layoutBlocks(0,autoBlocks(),T,Object.assign({cav:PROG.cav||'wings'},formOpt(0),opt||{})),T);
+  return validateGroups(layoutAuto(0,autoCounts(),T,Object.assign({cav:PROG.cav||'wings'},formOpt(0),opt||{})),T);
 }
 function enterDeploy(cfg){
   closeModal(); hideCards(); $('#banner').hidden=true;
@@ -3275,35 +3253,34 @@ function relayout(t){
   D.selObj.clear(); D.sel=-1;
   let gs;
   if(GAME.limited&&GAME.mode==='survival'&&t===0) gs=layoutSurvival(autoCounts(),TER);
-  else if(GAME.limited&&t===0) gs=layoutBlocks(0,autoBlocks(),TER,Object.assign({cav:D.fo[0].cav,zone:GAME.zones[0]||undefined},formOpt(0)));
   else gs=layoutAuto(t,teamCounts(t),TER,Object.assign({cav:D.fo[t].cav},formOpt(t)));
   gs=validateGroups(gs,TER); D.groups=D.groups.filter(g=>g.team!==t); addDeployGroups(gs); D.auto=true;
   if(GAME.limited&&t===0){ PROG.cav=D.fo[0].cav; saveProg(); }
   syncDeploy(); buildDeployDock();
 }
 /* ---------- ready-made blocks ---------- */
-// how many blocks of a kind are on the field, and how many you own
-const placedOf=(id,t)=>new Set(D.groups.filter(g=>g.team===t&&g.bkind===id).map(g=>g.bk)).size;
-const ownedOf=id=>blockOK(id)?(PROG.blocks[id]||0):0;
-function deployCountsOf(t){ return deployCounts(t); }
+// soldiers still in reserve for a side: the roster (or the army builder in sandbox) less those on the field
+function reservePool(t){ const c=deployCounts(t).by, base=GAME.limited&&t===0?rosterPool():(D.comp[t]||new Array(NT).fill(0)); return base.map((n,i)=>Math.max(0,n-c[i])); }
 function roomLeft(t){ return GAME.limited&&t===0?Math.max(0,capOf()-deployCounts(0).total):Math.max(0,MAXU-2000-D.groups.reduce((a,g)=>a+g.slots.length/3,0)); }
-const sandboxComp=B=>blockComp(B,()=>true,id=>id);
+// can this block be formed at all here (its units researched, in campaign modes)
+const blockShown=(B,t)=>!(GAME.limited&&t===0)||blockOK(B.id);
 function armBlock(id){ D.block=D.block===id?null:id; selectGroup(-1); buildDeployDock(); }
 function dropBlock(W){
   const t=editTeam(), B=BLOCK_BY[D.block]; if(!B) return;
-  if(!inZone(W[0],W[1],t)){ toast('Drop blocks inside your deployment zone, the tinted area on your side of the field.',2600); return; }
-  const lim=GAME.limited&&t===0, counts=lim?progSoldiers(B):sandboxComp(B), n=counts.reduce((a,b)=>a+b,0);
-  if(lim&&placedOf(B.id,0)>=ownedOf(B.id)){ toast(ownedOf(B.id)?`All ${ownedOf(B.id)} of your ${B.name.toLowerCase()} blocks are on the field. Raise more in the Council.`:`You have no ${B.name.toLowerCase()} blocks. Raise them in the Council.`,3200); return; }
-  if(n>roomLeft(t)){ toast(lim?`A ${B.name.toLowerCase()} is ${fmt(n)} soldiers and your army has room for ${fmt(roomLeft(t))} more under the ${fmt(capOf())} limit. Remove a block, or research Logistics.`:'The battlefield is full.',3400); return; }
+  if(!inZone(W[0],W[1],t)){ toast('Drop formations inside your deployment zone, the tinted area on your side of the field.',2600); return; }
+  const room=roomLeft(t);
+  if(room<=0){ toast(GAME.limited&&t===0?`Your army is at its limit of ${fmt(capOf())}. Remove a formation, or research Logistics in the Council.`:'The battlefield is full.',3200); return; }
+  const counts=fillBlock(B,reservePool(t),room), n=counts.reduce((a,b)=>a+b,0);
+  if(!n){ toast(`No soldiers left in reserve for a ${B.name.toLowerCase()}. ${B.id==='battery'?'It needs siege engines.':B.cav?'It needs cavalry.':B.id==='missile'?'It needs missile troops.':GAME.limited?'Recruit more in the Council, or remove a formation.':'Add soldiers in the army builder.'}`,3200); return; }
   pushUndo();
   const zn=GAME.zones[t]||[X0+2,X1-2];
   const gs=validateGroups(layoutBlock(t,counts,TER,B,W,D.groups,zn),TER), placed=gs.reduce((a,g)=>a+g.slots.length/3,0);
-  if(!placed){ D.undo.pop(); toast('There is no open ground for that block there.'); return; }
+  if(!placed){ D.undo.pop(); toast('There is no open ground for that formation there.'); return; }
   addDeployGroups(gs); D.auto=false; audPlace(); syncDeploy(); buildDeployDock();
+  const full=blockN(B);
   if(placed<n) toast(`${B.name}: ${fmt(n-placed)} soldiers did not fit on that ground`,2200);
+  else if(n<full) toast(`${B.name} placed with ${fmt(n)} of ${fmt(full)} soldiers: that is all the reserve had for it`,2400);
 }
-function setMix(id,m){ if(!PROG.mix) PROG.mix={}; if(m==='auto') delete PROG.mix['b_'+id]; else PROG.mix['b_'+id]=m; saveProg();
-  if(D.auto){ pushUndo(); relayout(0); } else { buildDeployDock(); toast('The mix is used by Auto army. Press it to redo the whole army.',2400); } }
 function setComp(t,ty,v){ pushUndo(); const c=D.comp[t]||(D.comp[t]=new Array(NT).fill(0)); const room=MAXU-2000-D.comp[t^1].reduce((a,b)=>a+b,0)-c.reduce((a,b,k)=>a+(k===ty?0:b),0); c[ty]=clamp(Math.round(v)||0,0,Math.max(0,Math.min(room,8000-c.reduce((a,b,k)=>a+(k===ty?0:b),0)))); relayout(t); }
 function fillComp(t,style,total){ pushUndo(); D.comp[t]=armyCounts(clamp(total|0,0,8000),UNITS.map(u=>u.id),style,mulberry32((Math.random()*1e9)|0)); relayout(t); }
 function clearTeam(){ const t=editTeam(); if(!D.groups.some(g=>g.team===t)) return; pushUndo(); D.groups=D.groups.filter(g=>g.team!==t); D.sel=-1; D.selObj.clear(); D.auto=false; syncDeploy(); buildDeployDock(); toast('Field cleared. Drop blocks, or press Auto army. Undo brings them back.',2600); }
@@ -3339,7 +3316,7 @@ function buildDeployDock(){
   const sandbox=GAME.editTeams.length>1;
   $('#sideSeg').hidden=!sandbox; $('#btnTerrain').hidden=!(GAME.mode==='sandbox'||GAME.mode==='custom'); $('#btnResearch').hidden=!GAME.limited;
   const surv=GAME.limited&&GAME.mode==='survival';
-  $('#btnClear').hidden=false; $('#compRow').hidden=D.terrain;
+  $('#btnClear').hidden=false; $('#compRow').hidden=GAME.limited||D.terrain;
   $('#sideSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on',+b.dataset.side===D.team));
   $('#btnTerrain').classList.toggle('on',D.terrain); $('#btnTerrain').textContent=D.terrain?'Back to troops':'Map editor';
   const av=availableTypes(); if(!av.includes(D.type)){ const up=UID[currentTier(UNITS[D.type].id)]; D.type=av.includes(up)?up:(av[0]||0); }
@@ -3350,19 +3327,14 @@ function buildDeployDock(){
     // what the armed block does, or how to build the army
     const t=editTeam(), c=teamCounts(t), red=t===1?' red':'', B=BLOCK_BY[D.block];
     if(surv) chips.innerHTML='<div class="hint" style="align-self:center">Survival deploys to hold the wall: infantry block the three gates and missile troops line the wall. Select regiments to move them or change their orders, or drop blocks of your own.</div>';
-    if(!surv||B){ const lim=GAME.limited&&t===0, room=roomLeft(t);
-      const tail=lim?`Army <b>${fmt(deployCounts(0).total)}</b> of ${fmt(capOf())} · room for <b>${fmt(room)}</b> more.`:'';
-      if(B){ const pv=lim?progSoldiers(B):sandboxComp(B);
+    if(!surv||B){ const lim=GAME.limited&&t===0, room=roomLeft(t), pool=reservePool(t), left=pool.reduce((a,b)=>a+b,0);
+      const tail=`In reserve: <b>${fmt(left)}</b>`+(lim?` · room for <b>${fmt(room)}</b> more under the ${fmt(capOf())} limit.`:'.');
+      if(B){ const pv=fillBlock(B,pool,room), pn=pv.reduce((a,b)=>a+b,0);
         const mix=UNITS.map((u,i)=>[pv[i],u.name]).filter(p=>p[0]>0).sort((a,b)=>b[0]-a[0]).map(p=>`${p[1].toLowerCase()} ${fmt(p[0])}`).join(', ');
-        const own=lim?` You have ${ownedOf(B.id)}, ${placedOf(B.id,0)} on the field.`:'';
-        chips.innerHTML=`<div class="fplan wide"><b>${B.name} · ${fmt(blockN(B))} soldiers</b><span>${esc(B.desc)}</span><span class="fo">Tap the field to drop one: ${mix}.${own} ${tail}</span></div>`; }
-      else chips.innerHTML=`<div class="fplan wide"><b>Build your army</b><span>Pick a block below and tap the field to drop it, or press Auto army to field everyone. Tap a block on the field to select it; tap it again to pick out one regiment.${lim?' Raise more blocks in the Council.':''}</span>${tail?`<span class="fo">${tail}</span>`:''}</div>`; }
+        chips.innerHTML=`<div class="fplan wide"><b>${B.name} · ${fmt(blockN(B))} soldiers</b><span>${esc(B.desc)}</span><span class="fo">${pn?`Tap the field to place one: ${mix}.`:'Nobody left in reserve for this formation.'} ${tail}</span></div>`; }
+      else chips.innerHTML=`<div class="fplan wide"><b>Build your army</b><span>Pick a formation below and tap the field to place it, using soldiers from your reserve. Auto army places everyone at once. Tap a formation on the field to select it; tap it again to pick out one regiment.</span><span class="fo">${tail}</span></div>`; }
     // army builder for sandbox and custom battles
-    if(GAME.limited){ const comp=$('#comp'); comp.innerHTML='<span class="mixlbl" title="How Auto army picks blocks when you own more than the army limit allows">Auto mix</span>';
-      BLOCKS.forEach(B=>{ const own=ownedOf(B.id); if(!own) return; const m=mixOf(B.id), el=document.createElement('div'); el.className='mchip'+(m==='off'?' off':'');
-        el.innerHTML=`<span class="nm">${blockIcon(B.id).replace('<svg ','<svg class="uicon" ')}${B.name}<span class="ct">${placedOf(B.id,0)}/${own}</span></span><span class="mseg" role="group" aria-label="${B.name} mix">${MIX_NAMES.map(([k,n])=>`<button class="${k===m?'on':''}" data-m="${k}" aria-pressed="${k===m}">${n}</button>`).join('')}</span>`;
-        el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>setMix(B.id,b.dataset.m)); comp.appendChild(el); }); }
-    else { const comp=$('#comp'); comp.innerHTML='';
+    if(!GAME.limited){ const comp=$('#comp'); comp.innerHTML='';
       const fill=document.createElement('div'); fill.className='fill';
       fill.innerHTML=`<select id="fillStyle" aria-label="Army style">${Object.entries(STYLES).map(([k,s])=>`<option value="${k}">${s.name}</option>`).join('')}</select><input type="number" id="fillN" min="0" max="8000" step="100" value="${Math.max(100,c.reduce((a,b)=>a+b,0)||900)}" aria-label="Army size"><button class="btn sm" id="fillGo">Fill</button>`;
       comp.appendChild(fill); comp.insertAdjacentHTML('beforeend','<span class="vsep"></span>');
@@ -3384,11 +3356,12 @@ function buildDeployDock(){
   } else {
     const t=editTeam(), f=D.fo[t];
     const lim=GAME.limited&&t===0;
-    BLOCKS.forEach(bk=>{ if(lim&&!blockOK(bk.id)) return; const on=D.block===bk.id, own=lim?ownedOf(bk.id):-1, b=document.createElement('button'); b.className='ftile'+(on?' on':'')+(own===0?' empty':'');
-      b.innerHTML=blockIcon(bk.id)+`<span>${bk.name}${lim?` ${placedOf(bk.id,0)}/${own}`:''}</span>`;
+    const pool=reservePool(t);
+    BLOCKS.forEach(bk=>{ if(!blockShown(bk,t)) return; const on=D.block===bk.id, n=fillBlock(bk,pool,1e9).reduce((a,b)=>a+b,0), b=document.createElement('button'); b.className='ftile'+(on?' on':'')+(n?'':' empty');
+      b.innerHTML=blockIcon(bk.id)+`<span>${bk.name}</span>`;
       b.title=`${bk.name}, ${blockN(bk)} soldiers. ${bk.desc}`; b.setAttribute('aria-pressed',on); b.onclick=()=>armBlock(bk.id); tools.appendChild(b); });
     tools.insertAdjacentHTML('beforeend','<span class="vsep"></span>');
-    const au=document.createElement('button'); au.className='btn sm primary'; au.style.alignSelf='center'; au.textContent='Auto army'; au.title='Field your blocks automatically, using the Auto mix when you own more than the army limit allows: front row of foot, missile lines and guns behind, horse on the wings.';
+    const au=document.createElement('button'); au.className='btn sm primary'; au.style.alignSelf='center'; au.textContent='Auto army'; au.title='Place everyone you can field: line regiments side by side, each with its share of every kind of soldier, horse on the wings or behind';
     au.onclick=()=>{ pushUndo(); D.block=null; relayout(t); }; tools.appendChild(au);
     if(!surv){ const cav=document.createElement('div'); cav.className='seg'; cav.setAttribute('role','group'); cav.setAttribute('aria-label','Cavalry position for Auto army'); cav.style.alignSelf='center';
       cav.innerHTML=`<button class="btn sm${f.cav!=='rear'?' on':''}" data-cav="wings">Horse on wings</button><button class="btn sm${f.cav==='rear'?' on':''}" data-cav="rear">Horse behind</button>`;
@@ -3685,7 +3658,7 @@ function showBattles(tab){
     const top=PROG.level; const rows=[];
     for(let L=1;L<=Math.min(top+1,CAMPAIGN_LEN);L++){ const cl=campaignLevel(L), locked=L>top, won=PROG.won[L];
       rows.push(`<div class="lrow${locked?' locked':''}"><div class="no">${L}</div><div style="min-width:0"><div class="t">${cl.name}</div><div class="m">${cl.final?'Final battle · ':''}${MAPS.find(m=>m.id===cl.mapId).name} · ${fmt(cl.count)} enemies · ${STYLES[cl.style].name.toLowerCase()} · reward ${fmt(cl.reward)}${won?' · <span class="won">won</span>':''}</div></div>${locked?'<span class="hint">Win battle '+(L-1)+'</span>':`<button class="btn sm${L===top?' primary':''}" data-camp="${L}">${won?'Replay':'Deploy'}</button>`}</div>`); }
-    body=`<p class="lede">${campaignDone()?`You have won the war. Replay any battle, or take your army into Endless and Survival.`:`Battle ${Math.min(top,CAMPAIGN_LEN)} of ${CAMPAIGN_LEN}.`} Your army: <b>${fmt(Object.values(PROG.blocks).reduce((a,b)=>a+b,0))}</b> blocks, <b>${fmt(rosterTotal())}</b> soldiers, up to <b>${fmt(capOf())}</b> on the field at once. Enemies grow about 30% larger each battle. Every block returns at full strength after a battle.</p><div class="list" id="campList">${rows.reverse().join('')}</div>
+    body=`<p class="lede">${campaignDone()?`You have won the war. Replay any battle, or take your army into Endless and Survival.`:`Battle ${Math.min(top,CAMPAIGN_LEN)} of ${CAMPAIGN_LEN}.`} Your army: <b>${fmt(rosterTotal())}</b> soldiers in the roster, up to <b>${fmt(capOf())}</b> on the field at once. Enemies grow about 30% larger each battle. The fallen recover between battles.</p><div class="list" id="campList">${rows.reverse().join('')}</div>
     <div class="resetrow"><span class="hint">Start again from battle 1 with a fresh army. Gold, soldiers, research, upgrades and best scores are wiped${CLOUD.on?' on every device signed in to your account':''}. Saved layouts are kept.</span><button class="btn sm danger" id="bReset">Reset progress</button></div>`;
   } else if(tab==='endless'){
     body=`<p class="lede">Deploy your roster and hold out against waves that grow 25% larger every round. Between waves your survivors heal fully and a third of the fallen return as reinforcements. Each broken wave pays a bonus. Best: <b>${PROG.best.endless}</b> waves.</p>
@@ -3735,13 +3708,11 @@ function showCouncil(tab){
   const ps=computeStats(upgLv,PROG.tech);
   let body='';
   if(tab==='recruit'){
-    const rows=BLOCKS.map(B=>{ const ok=blockOK(B.id), own=PROG.blocks[B.id]||0, c=progSoldiers(B), cost=blockCost(B);
-      const mix=UNITS.map((u,i)=>[c[i],u.name]).filter(p=>p[0]>0).sort((a,b)=>b[0]-a[0]).map(p=>`${p[1]} ${fmt(p[0])}`).join(' · ');
-      const b=n=>`<button class="btn sm" data-buy="${B.id}" data-n="${n}"${PROG.gold<cost*n?' disabled':''}>+${n} · ${fmt(cost*n)}</button>`;
-      const need=B.req.filter(r=>!owned(r)).map(r=>TECHBY[r]?TECHBY[r].name:r);
-      return `<div class="rec brec${ok?'':' locked'}">${blockIcon(B.id).replace('<svg ','<svg class="uicon" ')}<div style="min-width:0"><div class="t">${B.name}<small>${fmt(blockN(B))} soldiers</small></div><div class="st">${esc(B.desc)}</div><div class="comp">${mix}</div></div><div><div class="own">${own?`<b>${own}</b> owned`:'&nbsp;'}</div><div class="buy">${ok?b(1)+b(5)+(capOf()>=3000?b(20):''):`<span class="hint">Research ${need.join(', ')}</span>`}</div></div></div>`; }).join('');
-    const nb=Object.values(PROG.blocks).reduce((a,b)=>a+b,0);
-    body=`<p class="lede">Soldiers are raised in blocks: fixed groups with their own mix and shape. Each block comes back at full strength after every battle, and researching a better unit re-equips every block that uses it. You can field up to <b>${fmt(capOf())}</b> soldiers at once; research Logistics to raise the limit. You own <b>${fmt(nb)}</b> blocks, <b>${fmt(rosterTotal())}</b> soldiers.</p><div class="list">${rows}</div>`;
+    const rows=UNITS.map((u,i)=>{ if(!fieldable(u.id)) return ''; const s=ps[i], own=PROG.roster[u.id]||0;
+      const b=n=>{ const c=u.cost*n; return `<button class="btn sm" data-buy="${u.id}" data-n="${n}"${PROG.gold<c?' disabled':''}>+${n} · ${fmt(c)}</button>`; };
+      const big=capOf()>=2000?b(1000):'';
+      return `<div class="rec">${unitIcon(i)}<div style="min-width:0"><div class="t">${u.name}<small>${u.role}</small></div><div class="st">HP ${Math.round(s.hp)} · ARM ${s.armor.toFixed(1).replace('.0','')} · DMG ${Math.round(s.dmg)} · RNG ${u.isR?Math.round(s.range):s.range.toFixed(1)} · SPD ${s.speed.toFixed(1)} · ${u.cost}g each</div></div><div><div class="own"><b>${fmt(own)}</b> owned</div><div class="buy">${u.cls==='sie'?b(1)+b(5):b(10)+b(100)}${big}</div></div></div>`; }).join('');
+    body=`<p class="lede">Recruits join your roster permanently. You can field up to <b>${fmt(capOf())}</b> at once; research Logistics to raise the cap. Roster: <b>${fmt(rosterTotal())}</b>.</p><div class="list">${rows}</div>`;
   } else if(tab==='tech'){
     const cols=BRANCHES.map((bn,b)=>{ const nodes=TECH.filter(t=>t.b===b).map(t=>{ const own=owned(t.id), avail=!own&&t.req.every(owned);
       const u=t.unit?UNITS[UID[t.unit]]:null;
@@ -3761,11 +3732,11 @@ function showCouncil(tab){
   <div class="tabs">${tabs.map(([k,n])=>`<button class="tab${k===tab?' on':''}" data-tab="${k}">${n}</button>`).join('')}</div>${body}`,s=>{
     $('#cX').onclick=closeModal; const cn=s.querySelector('#cNext'); if(cn) cn.onclick=()=>nextAction()[1]();
     s.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>showCouncil(b.dataset.tab));
-    s.querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>{ const id=b.dataset.buy, n=+b.dataset.n, c=blockCost(BLOCK_BY[id])*n; if(PROG.gold<c||!blockOK(id)) return; PROG.gold-=c; PROG.blocks[id]=(PROG.blocks[id]||0)+n; normalizeRoster(); saveProg(); keepScroll(()=>showCouncil('recruit')); afterProgressChange(); });
+    s.querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>{ const id=b.dataset.buy, n=+b.dataset.n, c=UNITS[UID[id]].cost*n; if(PROG.gold<c) return; PROG.gold-=c; PROG.roster[id]=(PROG.roster[id]||0)+n; saveProg(); keepScroll(()=>showCouncil('recruit')); afterProgressChange(); });
     s.querySelectorAll('[data-tech]').forEach(b=>b.onclick=()=>{ const t=TECHBY[b.dataset.tech]; if(PROG.gold<t.cost) return; PROG.gold-=t.cost; PROG.tech[t.id]=true; let msg=`${t.name} researched`;
-      if(t.unit){ const prev=PREV_TIER[t.unit], conv=prev&&t.unit!=='elite'?(PROG.roster[prev]||0):0; normalizeRoster();
-        if(conv) msg=`Your ${fmt(conv)} ${UNITS[UID[prev]].name.toLowerCase()} are now ${t.name.toLowerCase()}`;
-        else { const nb=BLOCKS.filter(B=>B.req.includes(t.unit)&&blockOK(B.id)).map(B=>B.name); if(nb.length) msg+=`. You can now raise ${nb.join(' and ')} blocks.`; } }
+      if(t.unit){ const prev=PREV_TIER[t.unit], conv=prev?(PROG.roster[prev]||0):0;
+        if(conv){ PROG.roster[t.unit]=(PROG.roster[t.unit]||0)+conv; PROG.roster[prev]=0; msg=`Your ${fmt(conv)} ${UNITS[UID[prev]].name.toLowerCase()} are now ${t.name.toLowerCase()}`; }
+        else if(!PROG.roster[t.unit]){ PROG.roster[t.unit]=UNITS[UID[t.unit]].cls==='sie'?2:UNITS[UID[t.unit]].cls==='sup'?3:10; msg+='. A few recruits have joined.'; } }
       saveProg(); toast(msg,3000); keepScroll(()=>showCouncil('tech')); afterProgressChange(); });
     s.querySelectorAll('[data-upg]').forEach(b=>b.onclick=()=>{ const [c,st]=b.dataset.upg.split('_'), lv=upgLv(c,st), cost=upgCost(c,st,lv); if(PROG.gold<cost||lv>=UPG_MAX) return; PROG.gold-=cost; PROG.upg[c+'_'+st]=lv+1; saveProg(); keepScroll(()=>showCouncil('upgrades')); afterProgressChange(); });
   });
@@ -3773,7 +3744,7 @@ function showCouncil(tab){
 function keepScroll(fn){ const s=$('#sheet'), y=s.scrollTop, tree=s.querySelector('.tree'), tx=tree?tree.scrollLeft:0; fn(); s.scrollTop=y; const t2=s.querySelector('.tree'); if(t2) t2.scrollLeft=tx; }
 // wipe the campaign and the army, keeping only saved layouts
 function resetProgress(){ const saves=PROG.saves||[]; PROG=defaultProg(); PROG.saves=saves; saveProg(); normalizeRoster(); openCampaign(1); toast('Progress reset. A fresh army stands ready for battle 1.',3200); }
-function afterProgressChange(){ normalizeRoster(); updateHud(true); if(GAME.phase==='deploy'&&GAME.limited){ STT[0]=playerStats(); for(const g of D.groups) if(g.team===0) g.type=UID[blockTier(UNITS[g.type].id)]; syncDeploy(); buildDeployDock(); } }
+function afterProgressChange(){ updateHud(true); if(GAME.phase==='deploy'&&GAME.limited){ STT[0]=playerStats(); for(const g of D.groups) if(g.team===0) g.type=UID[currentTier(UNITS[g.type].id)]; syncDeploy(); buildDeployDock(); } }
 // what "continue" means after a battle, so the player is never stuck on the results
 function nextAction(){
   if(GAME.mode==='campaign'){ const L=GAME.level, won=GAME.winner===0;
