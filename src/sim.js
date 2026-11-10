@@ -243,14 +243,14 @@ function meleeHit(i,t,mult){
   if(a.antiCav && b.cls==='cav') dmg*=a.antiCav;
   if(a.cls==='cav' && CH[i]>0.55 && TER.k[cellIdx(PX[i],PZ[i])]!==T_FOREST){
     if(b.brace && dot>0.3 && SS[t]===1){
-      damage(i,30+b.dmg*2,t); CH[i]=0; STN[i]=0.9; VX[i]*=-0.3; VZ[i]*=-0.3; sfx(EV_BRACE,PX[t],PY[t],PZ[t]);
+      damage(i,22+b.dmg*1.5,t); CH[i]=0; STN[i]=0.9; VX[i]*=-0.3; VZ[i]*=-0.3; sfx(EV_BRACE,PX[t],PY[t],PZ[t]);
       spark(PX[t]+dx*.4,PY[t]+1.2,PZ[t]+dz*.4); spark(PX[t]+dx*.4,PY[t]+1.2,PZ[t]+dz*.4);
       return;
     }
     dmg*=a.charge;
     const vl=Math.hypot(VX[i],VZ[i])||1, kn=a.knock/Math.sqrt(b.mass);
-    knock(t,VX[i]/vl*kn,VZ[i]/vl*kn); STN[t]=0.6; shock+=10; sfx(EV_CHARGE,PX[t],PY[t],PZ[t]);
-    CH[i]= a.id==='lancer'?0.25:0;
+    knock(t,VX[i]/vl*kn,VZ[i]/vl*kn); STN[t]=0.6; shock+=15; sfx(EV_CHARGE,PX[t],PY[t],PZ[t]);
+    CH[i]= a.id==='lancer'?0.5:0;
     dustPuff(PX[t],PY[t],PZ[t],2);
   }
   if(SS[t]===2) dmg*=1.6;   // a routed soldier does not defend himself
@@ -493,7 +493,7 @@ function simTick(){
     if(want>0.25){ const mv2=(nx-x)*(nx-x)+(nz-z)*(nz-z); if(mv2<want*DT*DT*0.06){ STK[i]+=DT; if(STK[i]>0.7){ STU[i]=2.5; STK[i]=0; } } else STK[i]=Math.max(0,STK[i]-DT); }
     const sp2=VX[i]*VX[i]+VZ[i]*VZ[i];
     if(st.cls==='cav'){
-      if(sp2>(st.speed*0.65)**2 && kind!==T_FOREST) CH[i]=Math.min(1,CH[i]+DT*0.9); else CH[i]=Math.max(0,CH[i]-DT*0.6);
+      if(sp2>(st.speed*0.65)**2 && kind!==T_FOREST) CH[i]=Math.min(1,CH[i]+DT*1.3); else CH[i]=Math.max(0,CH[i]-DT*0.5);
       if(sp2>16 && ((tick+i)&7)===0) dustPuff(nx,heightAt(nx,nz),nz,0);
     } else if(TER.theme==='desert' && sp2>4 && ((tick+i)&31)===0) dustPuff(nx,heightAt(nx,nz),nz,0);
     if(faceT!==faceT && sp2>0.3) faceT=Math.atan2(VZ[i],VX[i]);

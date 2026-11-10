@@ -405,9 +405,9 @@ const UNITS=[
  {id:'archer',name:'Archers',   cls:'rng', hp:70, armor:1, dmg:10,aps:0.55,speed:3.0,range:36, morale:45, cost:12, r:.40,sp:1.1,mass:.9, scale:1,   foot:.5,  proj:0, acc:.045, role:'Volley fire', desc:'Lob volleys of arrows over friendly lines.'},
  {id:'xbow',  name:'Crossbowmen',cls:'rng',hp:80, armor:3, dmg:24,aps:0.3, speed:2.8,range:32, morale:50, cost:18, r:.42,sp:1.1,mass:1,  scale:1,   foot:.55, proj:1, acc:.03, pen:.7, role:'Armour piercing', desc:'Slow-loading bolts that ignore 70% of armour.'},
  {id:'musket',name:'Musketeers',cls:'rng', hp:85, armor:2, dmg:48,aps:0.18,speed:2.8,range:28, morale:55, cost:28, r:.42,sp:1.1,mass:1,  scale:1,   foot:.55, proj:2, acc:.028, pen:.8, role:'Gunpowder', desc:'Devastating flat volleys with long reloads.'},
- {id:'lcav',  name:'Light Cavalry',cls:'cav',hp:120,armor:2,dmg:14,aps:1.0,speed:7.5,range:1.2,morale:55, cost:25, r:.62,sp:2.0,mass:3,  scale:1,   foot:.95, charge:1.6, knock:.9, sense:16, role:'Flankers', desc:'Fast riders that swing wide and hunt archers and siege crews.'},
- {id:'hcav',  name:'Heavy Cavalry',cls:'cav',hp:240,armor:8,dmg:22,aps:0.8,speed:6.0,range:1.3,morale:75, cost:50, r:.70,sp:2.2,mass:4.5,scale:1.12,foot:1.05,charge:3, knock:1.8, sense:16, role:'Breakthrough', desc:'Crushing charges that knock infantry out of formation.'},
- {id:'lancer',name:'Lancers',   cls:'cav', hp:170,armor:5, dmg:16,aps:0.8, speed:6.8,range:2.2,morale:65, cost:45, r:.66,sp:2.1,mass:3.6,scale:1,   foot:1,   charge:5, knock:2.2, sense:16, role:'Charge specialists', desc:'The lance hit deals 5× damage on impact.'},
+ {id:'lcav',  name:'Light Cavalry',cls:'cav',hp:150,armor:3,dmg:17,aps:1.0,speed:8,range:1.2,morale:62, cost:25, r:.62,sp:2.0,mass:3,  scale:1,   foot:.95, charge:2, knock:1.1, sense:16, role:'Flankers', desc:'Fast riders that swing wide and hunt archers and siege crews.'},
+ {id:'hcav',  name:'Heavy Cavalry',cls:'cav',hp:300,armor:9,dmg:27,aps:0.85,speed:6.4,range:1.3,morale:85, cost:50, r:.70,sp:2.2,mass:4.5,scale:1.12,foot:1.05,charge:3.6, knock:2.1, sense:16, role:'Breakthrough', desc:'Crushing charges that knock infantry out of formation.'},
+ {id:'lancer',name:'Lancers',   cls:'cav', hp:210,armor:6, dmg:19,aps:0.85, speed:7.2,range:2.2,morale:75, cost:45, r:.66,sp:2.1,mass:3.6,scale:1,   foot:1,   charge:6, knock:2.5, pen:.35, sense:16, role:'Charge specialists', desc:'The lance hit deals 6× damage on impact and punches through armour.'},
  {id:'cata',  name:'Catapults', cls:'sie', hp:220,armor:2, dmg:70,aps:0.11,speed:2.7,range:80, morale:40, cost:120,r:1.2,sp:4.5,mass:12, scale:1,   foot:1.7, proj:3, acc:.05, aoe:3.5, minR:20, role:'Area siege', desc:'Hurl boulders that smash packed formations.'},
  {id:'ballista',name:'Ballistae',cls:'sie',hp:180,armor:2, dmg:80,aps:0.25,speed:2.9,range:72, morale:40, cost:110,r:1.0,sp:4,  mass:10, scale:1,   foot:1.5, proj:4, acc:.015, pierce:5, minR:8, role:'Precision', desc:'Bolts that skewer up to five soldiers in a file.'},
  {id:'cannon',name:'Cannons',   cls:'sie', hp:240,armor:4, dmg:95,aps:0.15,speed:2.7,range:88, morale:40, cost:180,r:1.1,sp:4.5,mass:12, scale:1,   foot:1.6, proj:5, acc:.03, pierce:8, minR:10, role:'Bouncing shot', desc:'Round shot bounces through ranks, hitting everyone in its path.'},
@@ -457,15 +457,15 @@ const TECH=[
  {id:'medic', b:4,name:'Medics',cost:900,req:['cmdr'],unit:'medic'},
  {id:'surgery',b:4,name:'Field Surgery',cost:1600,req:['medic'],desc:'Medics heal twice as fast.'},
  {id:'eng',   b:4,name:'Engineers',cost:1100,req:['cmdr'],unit:'eng'},
- {id:'log1',b:5,name:'Logistics I',cost:150,req:[],cap:250},
- {id:'log2',b:5,name:'Logistics II',cost:600,req:['log1'],cap:500},
- {id:'log3',b:5,name:'Logistics III',cost:2000,req:['log2'],cap:1000},
- {id:'log4',b:5,name:'Logistics IV',cost:6000,req:['log3'],cap:1600},
- {id:'log5',b:5,name:'Logistics V',cost:12000,req:['log4'],cap:2400},
- {id:'log6',b:5,name:'Logistics VI',cost:22000,req:['log5'],cap:3200},
- {id:'log7',b:5,name:'Logistics VII',cost:36000,req:['log6'],cap:4200},
- {id:'log8',b:5,name:'Logistics VIII',cost:55000,req:['log7'],cap:5000},
- {id:'log9',b:5,name:'Logistics IX',cost:80000,req:['log8'],cap:6000},
+ {id:'log1',b:5,name:'Logistics I',cost:200,req:[],cap:375},
+ {id:'log2',b:5,name:'Logistics II',cost:750,req:['log1'],cap:750},
+ {id:'log3',b:5,name:'Logistics III',cost:2500,req:['log2'],cap:1500},
+ {id:'log4',b:5,name:'Logistics IV',cost:7500,req:['log3'],cap:2400},
+ {id:'log5',b:5,name:'Logistics V',cost:15000,req:['log4'],cap:3600},
+ {id:'log6',b:5,name:'Logistics VI',cost:27500,req:['log5'],cap:4800},
+ {id:'log7',b:5,name:'Logistics VII',cost:45000,req:['log6'],cap:6300},
+ {id:'log8',b:5,name:'Logistics VIII',cost:70000,req:['log7'],cap:7500},
+ {id:'log9',b:5,name:'Logistics IX',cost:100000,req:['log8'],cap:9000},
 ];
 const TECHBY={}; TECH.forEach(t=>TECHBY[t.id]=t);
 const BASE_CAP=120;
@@ -1238,14 +1238,14 @@ function meleeHit(i,t,mult){
   if(a.antiCav && b.cls==='cav') dmg*=a.antiCav;
   if(a.cls==='cav' && CH[i]>0.55 && TER.k[cellIdx(PX[i],PZ[i])]!==T_FOREST){
     if(b.brace && dot>0.3 && SS[t]===1){
-      damage(i,30+b.dmg*2,t); CH[i]=0; STN[i]=0.9; VX[i]*=-0.3; VZ[i]*=-0.3; sfx(EV_BRACE,PX[t],PY[t],PZ[t]);
+      damage(i,22+b.dmg*1.5,t); CH[i]=0; STN[i]=0.9; VX[i]*=-0.3; VZ[i]*=-0.3; sfx(EV_BRACE,PX[t],PY[t],PZ[t]);
       spark(PX[t]+dx*.4,PY[t]+1.2,PZ[t]+dz*.4); spark(PX[t]+dx*.4,PY[t]+1.2,PZ[t]+dz*.4);
       return;
     }
     dmg*=a.charge;
     const vl=Math.hypot(VX[i],VZ[i])||1, kn=a.knock/Math.sqrt(b.mass);
-    knock(t,VX[i]/vl*kn,VZ[i]/vl*kn); STN[t]=0.6; shock+=10; sfx(EV_CHARGE,PX[t],PY[t],PZ[t]);
-    CH[i]= a.id==='lancer'?0.25:0;
+    knock(t,VX[i]/vl*kn,VZ[i]/vl*kn); STN[t]=0.6; shock+=15; sfx(EV_CHARGE,PX[t],PY[t],PZ[t]);
+    CH[i]= a.id==='lancer'?0.5:0;
     dustPuff(PX[t],PY[t],PZ[t],2);
   }
   if(SS[t]===2) dmg*=1.6;   // a routed soldier does not defend himself
@@ -1488,7 +1488,7 @@ function simTick(){
     if(want>0.25){ const mv2=(nx-x)*(nx-x)+(nz-z)*(nz-z); if(mv2<want*DT*DT*0.06){ STK[i]+=DT; if(STK[i]>0.7){ STU[i]=2.5; STK[i]=0; } } else STK[i]=Math.max(0,STK[i]-DT); }
     const sp2=VX[i]*VX[i]+VZ[i]*VZ[i];
     if(st.cls==='cav'){
-      if(sp2>(st.speed*0.65)**2 && kind!==T_FOREST) CH[i]=Math.min(1,CH[i]+DT*0.9); else CH[i]=Math.max(0,CH[i]-DT*0.6);
+      if(sp2>(st.speed*0.65)**2 && kind!==T_FOREST) CH[i]=Math.min(1,CH[i]+DT*1.3); else CH[i]=Math.max(0,CH[i]-DT*0.5);
       if(sp2>16 && ((tick+i)&7)===0) dustPuff(nx,heightAt(nx,nz),nz,0);
     } else if(TER.theme==='desert' && sp2>4 && ((tick+i)&31)===0) dustPuff(nx,heightAt(nx,nz),nz,0);
     if(faceT!==faceT && sp2>0.3) faceT=Math.atan2(VZ[i],VX[i]);
