@@ -256,9 +256,6 @@ function buildTerrainGeometry(T){
       mb.pyr(bx,bh+2.6,bz,s+0.3,2.2,s+0.3,[0.6,0.3,0.22]);
     } else if(k===T_ROCK && r<0.16){
       const s=0.8+hash2(i,j+1)*1.6; mb.octa(x,h+s*0.4,z,s,s*0.8,s*0.9,[0.52+r*0.3,0.5+r*0.3,0.48+r*0.3]);
-    } else if(k===T_STAKES){
-      const col=[0.5,0.38,0.24];
-      for(let n=0;n<3;n++){ const ox=(n-1)*0.6; mb.with(p=>{ const q=rotXAt(0.7,0,0)(p); return [q[0]+x+ox,q[1]+h,q[2]+z]; },()=>mb.box(0,0.6,0,0.1,1.3,0.1,col)); }
     }
   }
   const props=new Float32Array(mb.v);
@@ -271,6 +268,14 @@ function buildTerrainGeometry(T){
     P(x0,z0); P(x0+TC,z0); P(x0+TC,z0+TC); P(x0,z0); P(x0+TC,z0+TC); P(x0,z0+TC); }
   return {ground, water:new Float32Array(w)};
 }
+// stakes are their own small mesh, so engineers planting them never rebuild the whole battlefield
+function buildStakesGeometry(T){ const mb=new MB(), col=[0.5,0.38,0.24];
+  for(let c=0;c<TW*TH;c++){ if(T.k[c]!==T_STAKES) continue; const i=c%TW, j=(c/TW)|0, x=X0+(i+.5)*TC, z=Z0+(j+.5)*TC, h=heightAt(x,z);
+    for(let n=0;n<3;n++){ const ox=(n-1)*0.6; mb.with(p=>{ const q=rotXAt(0.7,0,0)(p); return [q[0]+x+ox,q[1]+h,q[2]+z]; },()=>mb.box(0,0.6,0,0.1,1.3,0.1,col)); } }
+  return new Float32Array(mb.v); }
+function gpuSetStakes(T){ if(!GPU_R.ok) return; const {device}=GPU_R, v=buildStakesGeometry(T);
+  if(GPU_R.stakeBuf) GPU_R.stakeBuf.destroy(); GPU_R.stakeBuf=null; GPU_R.stakeCount=0; if(!v.length) return;
+  GPU_R.stakeBuf=device.createBuffer({size:v.byteLength,usage:GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_DST}); device.queue.writeBuffer(GPU_R.stakeBuf,0,v); GPU_R.stakeCount=v.length/9; }
 function terrainImage(T){
   const cv=document.createElement('canvas'); cv.width=TW; cv.height=TH;
   const ctx=cv.getContext('2d'), img=ctx.createImageData(TW,TH), VW=TW+1;
@@ -523,6 +528,7 @@ function gpuFrame(canvas){
   pass.setBindGroup(0,R.bind);
   pass.setPipeline(R.P.sky); pass.draw(3);
   if(R.groundCount){ pass.setPipeline(R.P.ground); pass.setVertexBuffer(0,R.groundBuf); pass.draw(R.groundCount); }
+  if(R.stakeCount){ pass.setPipeline(R.P.ground); pass.setVertexBuffer(0,R.stakeBuf); pass.draw(R.stakeCount); }
   if(nu){
     pass.setPipeline(R.P.unit); pass.setVertexBuffer(0,R.meshBuf); pass.setVertexBuffer(1,R.instBuf);
     for(let b=0;b<NT*2;b++){ const c=bucketCount[b]; if(!c) continue; const rg=R.meshes.ranges[b]; pass.draw(rg.count,c,rg.first,bucketOff[b]); }

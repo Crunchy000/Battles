@@ -393,7 +393,7 @@ function simTick(){
     if(s===2){
       // fleeing toward own edge, away from enemies
       let ax=tm===0?-1:1, az=0, enemyNear=false;
-      if(((tick+i)&3)===0) TG[i]=nearestIn(tm^1,x,z,11,false);
+      if(((tick+i)&7)===0) TG[i]=nearestIn(tm^1,x,z,11,false);
       const e=TG[i];
       if(e>=0 && SS[e]===1){ const ex=x-PX[e], ez=z-PZ[e], d=Math.hypot(ex,ez)||1; if(d<11){ ax+=ex/d*1.4; az+=ez/d*1.4; enemyNear=true; } }
       const al=Math.hypot(ax,az)||1; dvx=ax/al*spd*0.9; dvz=az/al*spd*0.9;
@@ -405,8 +405,8 @@ function simTick(){
       if(tgt>=0 && SS[tgt]!==1 && SS[tgt]!==2) tgt=-1;
       const rangeE = st.isR ? st.range+Math.max(0,PY[i])*1.2 : 0;
       const near=g.ned < (st.isR?rangeE:st.sense)+22;
-      let need=near && ((tick+i)&3)===0;
-      if(need && tgt>=0 && ((tick+i)&15)!==0){
+      let need=near && ((tick+i)%6)===0;
+      if(need && tgt>=0 && ((tick+i)%18)!==0){
         // already striking or shooting a valid target: keep it instead of re-scanning
         const ddx=PX[tgt]-x, ddz=PZ[tgt]-z, d2=ddx*ddx+ddz*ddz;
         if(st.isR){ if(d2<=rangeE*rangeE && d2>=st.minR*st.minR) need=false; }
@@ -498,7 +498,7 @@ function simTick(){
     } else if(TER.theme==='desert' && sp2>4 && ((tick+i)&31)===0) dustPuff(nx,heightAt(nx,nz),nz,0);
     if(faceT!==faceT && sp2>0.3) faceT=Math.atan2(VZ[i],VX[i]);
     if(faceT===faceT) FA[i]=turnToward(FA[i],faceT,(st.cls==='cav'?4:7)*DT);
-    PY[i]=heightAt(nx,nz);
+    if(nx!==x||nz!==z) PY[i]=heightAt(nx,nz);
     if(SS[i]===1){ g.sx+=nx; g.sz+=nz; g.slx+=SX[i]; g.slz+=SZ[i]; g.cnt++; if(!st.isSiege && !st.heal && !st.stakes) B.combat[tm]++; }
   }
   separation();
@@ -521,7 +521,8 @@ function separation(){
     const gz0=cz>0?cz-1:0, gz1=cz<CGH-1?cz+1:cz, gx0=cx>0?cx-1:0, gx1=cx<CGW-1?cx+1:cx;
     for(let ki=k0;ki<k1;ki++){
       const i=cIdx[ki];
-      if(((tick+i)%3)!==0 && G[GR[i]].ned>45) continue;
+      // near the fighting every other tick, elsewhere every fourth (the push is scaled to match)
+      if(((tick+i)&(G[GR[i]].ned>45?3:1))!==0) continue;
       const x=SPX[ki], z=SPZ[ki], ri=SRAD[ki], mi=SMAS[ki];
       let fx=0, fz=0;
       for(let gz=gz0;gz<=gz1;gz++){
@@ -535,12 +536,12 @@ function separation(){
           }
         }
       }
-      SEPX[i]=fx*0.5; SEPZ[i]=fz*0.5;
+      SEPX[i]=fx*0.8; SEPZ[i]=fz*0.8;
     }
   }
   for(let i=0;i<N;i++){
     let fx=SEPX[i], fz=SEPZ[i]; if(fx===0&&fz===0) continue;
-    const l=Math.hypot(fx,fz); if(l>0.3){ fx*=0.3/l; fz*=0.3/l; }
+    const l=Math.hypot(fx,fz); if(l>0.42){ fx*=0.42/l; fz*=0.42/l; }
     const nx=PX[i]+fx, nz=PZ[i]+fz;
     if(passAt(nx,PZ[i])) PX[i]=nx; if(passAt(PX[i],nz)) PZ[i]=nz;
   }

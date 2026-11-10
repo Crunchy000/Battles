@@ -129,7 +129,7 @@ new ResizeObserver(measureDock).observe($('.topbar'));
 /* ---------- terrain refresh ---------- */
 const MINI={base:null,buf:null,ctx:null,w:300,h:180};
 function onTerrainChanged(){
-  if(RENDER==='gpu') gpuSetTerrain(TER);
+  if(RENDER==='gpu'){ gpuSetTerrain(TER); gpuSetStakes(TER); }
   r2dSetTerrain(TER);
   const c=$('#minimap'); MINI.ctx=c.getContext('2d'); MINI.w=c.width; MINI.h=c.height;
   MINI.ctx.imageSmoothingEnabled=true; MINI.ctx.drawImage(R2D.img,0,0,MINI.w,MINI.h);
@@ -149,10 +149,21 @@ function trimToRoster(gs){
   for(const g of gs){ const id=UNITS[g.type].id; if(!fieldable(id)){ g.slots=[]; continue; } const n=Math.min(g.slots.length/3,left[id],cap); g.slots.length=n*3; left[id]-=n; cap-=n; }
   return gs.filter(g=>g.slots.length);
 }
-function autoCounts(){
-  const counts=new Array(NT).fill(0); const cap=capOf(); const tot=rosterTotal();
-  const f=tot>cap?cap/tot:1;
-  UNITS.forEach((u,i)=>{ if(fieldable(u.id)) counts[i]=Math.floor((PROG.roster[u.id]||0)*f); });
+// the soldiers who take the field. Over the army limit, commanders, medics and engineers all come,
+// then the formation picks the rest: types it wants most get a bigger share of their numbers.
+function autoCounts(formId){
+  const counts=new Array(NT).fill(0), cap=capOf(), have=new Array(NT).fill(0); let tot=0;
+  UNITS.forEach((u,i)=>{ if(fieldable(u.id)){ have[i]=PROG.roster[u.id]||0; tot+=have[i]; } });
+  if(tot<=cap) return have;
+  let room=cap; for(const id of ['cmdr','medic','eng']){ const i=UID[id]; counts[i]=Math.min(have[i],room); room-=counts[i]; }
+  const want=(FORM_BY[formId||progForm()]||FORMATIONS[0]).want, w=UNITS.map((u,i)=>unitRole(i)==='sup'?0:(want[unitRole(i)]||1));
+  // find the share x so that sum(min(have, x*have*w)) fills the room
+  const fill=x=>{ let s=0; for(let i=0;i<NT;i++) if(w[i]) s+=Math.min(have[i],x*have[i]*w[i]); return s; };
+  let lo=0, hi=1; while(fill(hi)<room && hi<1e6) hi*=2; for(let k=0;k<40;k++){ const m=(lo+hi)/2; if(fill(m)<room) lo=m; else hi=m; }
+  const exact=UNITS.map((u,i)=>w[i]?Math.min(have[i],lo*have[i]*w[i]):0);
+  for(let i=0;i<NT;i++) if(w[i]) counts[i]=Math.floor(exact[i]);
+  let left=cap-counts.reduce((a,b)=>a+b,0); const ord=exact.map((v,i)=>[v-Math.floor(v),i]).filter(p=>w[p[1]]&&counts[p[1]]<have[p[1]]).sort((a,b)=>b[0]-a[0]);
+  for(let j=0;left>0&&j<ord.length;j++,left--) counts[ord[j][1]]++;
   return counts;
 }
 // the formation the player last chose (older saves stored a number)
@@ -161,7 +172,7 @@ function progForm(){ if(PROG.formId&&FORM_BY[PROG.formId]) return PROG.formId; c
 function formOpt(team){ return GAME.mapId==='fortress'&&team===0&&GAME.mode!=='survival'?{gates:FORT_GATES.map(g=>g*MS)}:{}; }
 function playerLayout(T,saved,opt){
   const id=progForm();
-  return validateGroups(layoutFormation(0,autoCounts(),T,id,null,Object.assign({cav:PROG.cav||FORM_BY[id].cav},formOpt(0),opt||{})),T);
+  return validateGroups(layoutFormation(0,autoCounts(id),T,id,null,Object.assign({cav:PROG.cav||FORM_BY[id].cav},formOpt(0),opt||{})),T);
 }
 function enterDeploy(cfg){
   closeModal(); hideCards(); $('#banner').hidden=true;
@@ -266,7 +277,7 @@ function onKill(t){ if(GAME.limited && TM[t]===1) GAME.gold+=UNITS[TY[t]].cost*k
 function onEscape(i){ if(GAME.limited && TM[i]===1) GAME.gold+=UNITS[TY[i]].cost*killPay()*0.5; }
 function spawnEndlessWave(){
   const w=GAME.wave; if(!GAME.base0) GAME.base0=B.start[0]; const base=Math.max(40,Math.round(GAME.base0*0.5));
-  const count=Math.min(30000,Math.round(base*Math.pow(1.25,w-1)));
+  const count=Math.min(6000,Math.round(base*Math.pow(1.25,w-1)));
   const L=Math.min(20,Math.floor(1+w*1.6)), pool=poolAt(L);
   const lv=Math.min(5,Math.floor((w-1)/3)); STT[1]=enemyStats(lv); setAbilities(1,enemyAbilities(lv));
   const wg=validateGroupsAny(genArmy(1,count,pool,STYLE_CYCLE[w%7],GAME.seed+w*101,TER,{back:70})); GAME.waveN=wg.reduce((a,g)=>a+g.slots.length/3,0); B.broken[1]=false;
@@ -286,7 +297,7 @@ function validateGroupsAny(gs){ for(const g of gs){ const keep=[]; for(let k=0;k
 // an army reduced to a tenth of its strength and heavily outnumbered breaks and flees for good
 function checkBreak(t,start){ if(!B.rules.morale||B.broken[t]) return; const a=B.active[t]; if(a>0 && a<=Math.max(2,start*0.1) && a<B.active[t^1]*0.25) breakArmy(t); }
 function afterTick(){
-  if(stakesChanged){ stakesChanged=false; markTerrainDirty(); }
+  if(stakesChanged){ stakesChanged=false; GAME.stakesDirty=true; }
   if(GAME.ended) return;
   if(GAME.mode==='endless'){
     checkBreak(0,B.start[0]); checkBreak(1,GAME.waveN||B.start[1]);
@@ -570,7 +581,7 @@ const FORM_ICONS={
 };
 const formIcon=id=>`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${FORM_ICONS[id]}</svg>`;
 const editTeam=()=>GAME.limited?0:D.team;
-const teamCounts=t=>GAME.limited&&t===0?autoCounts():(D.comp[t]||new Array(NT).fill(0));
+const teamCounts=t=>GAME.limited&&t===0?autoCounts(D.fo[0].form):(D.comp[t]||new Array(NT).fill(0));
 // the infantry and missile types present, in this side's front-to-back order
 function bandTypes(t){ const c=teamCounts(t); const present=UNITS.map((u,k)=>k).filter(k=>c[k]>0&&(UNITS[k].cls==='inf'||UNITS[k].cls==='rng')).map(k=>UNITS[k].id);
   const o=(D.fo[t].order||formationOrder(D.fo[t].form)).filter(id=>present.includes(id)); for(const id of present) if(!o.includes(id)) o.splice(BAND_ORDER.includes(id)?Math.min(o.length,BAND_ORDER.indexOf(id)):o.length,0,id); return o; }
@@ -585,8 +596,8 @@ function relayout(t){
 }
 // choosing a formation brings its own unit order, horse position and orders
 function setFormation(id){ const t=editTeam(), F=FORM_BY[id]; pushUndo(); Object.assign(D.fo[t],{form:id,order:null,cav:F.cav}); relayout(t); toast(`${F.name}: ${F.plan}`,1800); }
-function setComp(t,ty,v){ pushUndo(); const c=D.comp[t]||(D.comp[t]=new Array(NT).fill(0)); const room=MAXU-2000-D.comp[t^1].reduce((a,b)=>a+b,0)-c.reduce((a,b,k)=>a+(k===ty?0:b),0); c[ty]=clamp(Math.round(v)||0,0,Math.max(0,room)); relayout(t); }
-function fillComp(t,style,total){ pushUndo(); D.comp[t]=armyCounts(clamp(total|0,0,30000),UNITS.map(u=>u.id),style,mulberry32((Math.random()*1e9)|0)); relayout(t); }
+function setComp(t,ty,v){ pushUndo(); const c=D.comp[t]||(D.comp[t]=new Array(NT).fill(0)); const room=MAXU-2000-D.comp[t^1].reduce((a,b)=>a+b,0)-c.reduce((a,b,k)=>a+(k===ty?0:b),0); c[ty]=clamp(Math.round(v)||0,0,Math.max(0,Math.min(room,8000-c.reduce((a,b,k)=>a+(k===ty?0:b),0)))); relayout(t); }
+function fillComp(t,style,total){ pushUndo(); D.comp[t]=armyCounts(clamp(total|0,0,8000),UNITS.map(u=>u.id),style,mulberry32((Math.random()*1e9)|0)); relayout(t); }
 function clearTeam(){ if(!GAME.limited){ pushUndo(); D.comp[D.team]=new Array(NT).fill(0); relayout(D.team); toast('Army cleared. Undo brings it back.'); return; } pushUndo(); D.groups=D.groups.filter(g=>g.team!==D.team||!GAME.editTeams.includes(g.team)); D.sel=-1; syncDeploy(); refreshDeployUi(); toast('Cleared. Undo brings them back.'); }
 
 /* ---------- map editor ---------- */
@@ -633,11 +644,11 @@ function buildDeployDock(){
     if(surv){ chips.innerHTML='<div class="hint" style="align-self:center">Survival deploys to hold the wall: infantry block the three gates and missile troops line the wall. Select regiments to move them or change their orders.</div>'; }
     else if(!o.length){ chips.innerHTML=`<div class="hint" style="align-self:center">${GAME.limited?'Recruit infantry or missile troops in the Council to arrange your ranks.':'Add soldiers above to build this army.'}</div>`; }
     else { const F=FORM_BY[D.fo[t].form]||FORMATIONS[0];
-      chips.insertAdjacentHTML('beforeend',`<div class="fplan wide" title="${esc(F.desc)}"><b>${F.name}</b><span>${esc(F.desc)}</span><span class="fo">Orders: ${F.plan} · Front to back: ${o.map(id=>UNITS[UID[id]].name).join(' → ')}</span></div>`); }
+      chips.insertAdjacentHTML('beforeend',`<div class="fplan wide" title="${esc(F.desc)}"><b>${F.name}</b><span>${esc(F.desc)}</span><span class="fo">Orders: ${F.plan} · Front to back: ${o.map(id=>UNITS[UID[id]].name).join(' → ')}</span>${GAME.limited&&t===0&&rosterTotal()>capOf()?`<span class="fo">Your roster is over the ${fmt(capOf())} limit, so the troops this formation suits best go first.</span>`:''}</div>`); }
     // army builder for sandbox and custom battles
     if(!GAME.limited){ const comp=$('#comp'); comp.innerHTML='';
       const fill=document.createElement('div'); fill.className='fill';
-      fill.innerHTML=`<select id="fillStyle" aria-label="Army style">${Object.entries(STYLES).map(([k,s])=>`<option value="${k}">${s.name}</option>`).join('')}</select><input type="number" id="fillN" min="0" max="30000" step="100" value="${Math.max(100,c.reduce((a,b)=>a+b,0)||900)}" aria-label="Army size"><button class="btn sm" id="fillGo">Fill</button>`;
+      fill.innerHTML=`<select id="fillStyle" aria-label="Army style">${Object.entries(STYLES).map(([k,s])=>`<option value="${k}">${s.name}</option>`).join('')}</select><input type="number" id="fillN" min="0" max="8000" step="100" value="${Math.max(100,c.reduce((a,b)=>a+b,0)||900)}" aria-label="Army size"><button class="btn sm" id="fillGo">Fill</button>`;
       comp.appendChild(fill); comp.insertAdjacentHTML('beforeend','<span class="vsep"></span>');
       fill.querySelector('#fillGo').onclick=()=>fillComp(t,fill.querySelector('#fillStyle').value,+fill.querySelector('#fillN').value);
       UNITS.forEach((u,ty)=>{ const step=u.cls==='sie'||u.cls==='sup'||ty===UID.elite?1:10, el=document.createElement('div'); el.className='cchip'+red;
@@ -924,7 +935,7 @@ function legendHtml(){ return `<div class="legend">${[['sword','Infantry'],['arc
 function showWelcome(){
   const L=PROG.level;
   openModal(`<div class="sheet-h"><h2 class="welcome-mark">MASSIVE<br><span>ARMIES</span></h2><button class="x" id="wX" aria-label="Close" style="align-self:flex-start">×</button></div>
-  <p class="lede">Deploy thousands of geometric soldiers in formations, give each regiment its orders, then watch the lines collide. Earn gold from every enemy you break, recruit, research, and grow toward armies of tens of thousands.</p>
+  <p class="lede">Deploy thousands of geometric soldiers in formations, give each regiment its orders, then watch the lines collide. Earn gold from every enemy you break, recruit, research, and grow toward armies of thousands.</p>
   ${legendHtml()}
   <div class="actions" style="justify-content:flex-start">
     <button class="btn primary" id="wCamp">${campaignDone()?'Campaign won · replay battles':L>1?`Continue campaign · Battle ${L} of ${CAMPAIGN_LEN}`:'Start campaign'}</button>
@@ -961,12 +972,12 @@ function showBattles(tab){
   } else {
     const c=GAME.custom;
     const styleOpts=v=>Object.entries(STYLES).map(([k,s])=>`<option value="${k}"${k===v?' selected':''}>${s.name}</option>`).join('');
-    body=`<p class="lede">Generate two armies, fine-tune them in deployment, and let them fight. Very large battles need a fast device.</p>
+    body=`<p class="lede">Generate two armies, fine-tune them in deployment, and let them fight. Up to 8,000 a side; battles over about 10,000 soldiers in total need a fast device.</p>
     <div class="grid2">
       <label class="field">Battlefield<select id="cMap">${mapOptions(c.map,['blank'])}</select></label>
       <label class="field">Starting distance<select id="cDist"><option value="close"${c.dist==='close'?' selected':''}>Close</option><option value="normal"${c.dist==='normal'?' selected':''}>Normal</option><option value="far"${c.dist==='far'?' selected':''}>Far</option></select></label>
-      <label class="field"><span>Blue army <output id="cBo">${fmt(c.blue)}</output></span><input type="range" id="cB" min="50" max="30000" step="50" value="${c.blue}"></label>
-      <label class="field"><span>Red army <output id="cRo">${fmt(c.red)}</output></span><input type="range" id="cR" min="50" max="30000" step="50" value="${c.red}"></label>
+      <label class="field"><span>Blue army <output id="cBo">${fmt(c.blue)}</output></span><input type="range" id="cB" min="50" max="8000" step="50" value="${c.blue}"></label>
+      <label class="field"><span>Red army <output id="cRo">${fmt(c.red)}</output></span><input type="range" id="cR" min="50" max="8000" step="50" value="${c.red}"></label>
       <label class="field">Blue composition<select id="cBs">${styleOpts(c.bs)}</select></label>
       <label class="field">Red composition<select id="cRs">${styleOpts(c.rs)}</select></label>
       <label class="check"><input type="checkbox" id="cMor"${c.morale?' checked':''}>Morale and routing</label>
@@ -1187,8 +1198,10 @@ function loop(now){
   const dt=Math.min(0.1,(now-lastT)/1000); lastT=now;
   if(GAME.phase==='battle'){
     const sp=GAME.speed; acc+=dt*sp; let steps=0;
-    while(acc>=DT && steps<6){ simTick(); afterTick(); acc-=DT; steps++; }
-    if(steps>=6) acc=0;
+    // at most ~14 ms of simulation per frame: a huge battle on a slow device runs a little slower instead of stuttering
+    const t0=performance.now();
+    while(acc>=DT && steps<6 && (steps===0||performance.now()-t0<14)){ simTick(); afterTick(); acc-=DT; steps++; }
+    if(acc>=DT) acc=Math.min(acc,DT*0.99);
     VIEW.alpha=sp>0?clamp(acc/DT,0,1):1;
     VIEW.time+=dt*sp;
     updateParticles(dt*sp);
@@ -1201,6 +1214,8 @@ function loop(now){
   camUpdate(dt);
   audioFrame(dt,GAME.phase,GAME.phase==='result'?0.5:GAME.speed);
   if(GAME.terrainDirty && now-GAME.terrainT>150){ GAME.terrainT=now; onTerrainChanged(); }
+  // new stakes: refresh only the stakes layer (and the flat map in canvas mode), at most a few times a second
+  if(GAME.stakesDirty && now-(GAME.stakesT||0)>300){ GAME.stakesT=now; GAME.stakesDirty=false; if(RENDER==='gpu') gpuSetStakes(TER); else r2dSetTerrain(TER); }
   if(RENDER==='gpu'&&GPU_R.ok){ try{ gpuFrame(glCanvas); }catch(e){ console.error(e); useFallback(e.message); } }
   else r2dFrame(c2d);
   drawOverlay();
