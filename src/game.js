@@ -537,6 +537,7 @@ function projW(x,y,z){
   if(cw<=0.01) return null; return [(cx/cw*0.5+0.5)*CAM.W,(0.5-cy/cw*0.5)*CAM.H];
 }
 function boxSelect(a,b,add){
+  PANEL_OPEN=true;
   const x0=Math.min(a[0],b[0]), x1=Math.max(a[0],b[0]), y0=Math.min(a[1],b[1]), y1=Math.max(a[1],b[1]);
   const inside=(x,y,z)=>{ const q=projW(x,y,z); return q&&q[0]>=x0&&q[0]<=x1&&q[1]>=y0&&q[1]<=y1; };
   if(GAME.phase==='deploy'){
@@ -699,12 +700,15 @@ function updateCapBox(){
   else { const a=deployCounts(0).total, b=deployCounts(1).total; cb.innerHTML=`<span style="color:var(--blue)">Blue <b>${fmt(a)}</b></span> · <span style="color:var(--red)">Red <b>${fmt(b)}</b></span>`;
     const c=deployCounts(D.team); document.querySelectorAll('[data-ct]').forEach(e=>{ const ty=+e.dataset.ct; e.textContent=c.by[ty]?fmt(c.by[ty])+' placed':'—'; }); }
 }
+// the orders panel opens on touch-and-hold (or after drag-selecting), so plain taps and double taps stay clear
+let PANEL_OPEN=false;
 function renderGroupPanel(){
   const p=$('#groupPanel'), battle=GAME.phase==='battle';
   let items=[];
   if(GAME.phase==='deploy') items=selGroups().map(g=>({type:g.type,n:g.slots.length/3,team:g.team,o:Math.max(0,ORDER_IDS.indexOf(g.order))}));
   else if(battle){ for(const gi of [...BSEL]){ const g=G[gi]; if(!g||g.cnt<=0){ BSEL.delete(gi); continue; } items.push({type:g.type,n:g.cnt,team:g.team,o:g.order}); } }
-  if(!items.length){ p.hidden=true; refreshHighlight(); return; }
+  if(!items.length) PANEL_OPEN=false;
+  if(!items.length||!PANEL_OPEN){ p.hidden=true; refreshHighlight(); return; }
   const total=items.reduce((a,x)=>a+x.n,0), same=items.every(x=>x.o===items[0].o), o=same?items[0].o:-1, one=items.length===1, it=items[0];
   const title=one?`<span style="color:${it.team?'var(--red)':'var(--blue)'}">${unitIcon(it.type)}</span>${UNITS[it.type].name} <span class="hudtext" style="color:var(--muted);font-weight:500">× ${fmt(it.n)}</span>`
     :`${fmt(items.length)} regiments <span class="hudtext" style="color:var(--muted);font-weight:500">· ${fmt(total)} soldiers</span>`;
@@ -823,11 +827,27 @@ function r2dToWorld(sx,sy){ const s=CAM.H/(CAM.dist*0.9+20), sn=Math.sin(CAM.yaw
 function worldAt(x,y){ return RENDER==='2d'?r2dToWorld(x,y):rayGround(screenRay(x,y)); }
 function worldAtPlane(x,y,h){ if(RENDER==='2d') return r2dToWorld(x,y); return rayPlane(screenRay(x,y),h)||rayGround(screenRay(x,y)); }
 function snapCam(){ CAM.tx=CAM.g.tx; CAM.tz=CAM.g.tz; CAM.yaw=CAM.g.yaw; CAM.pitch=CAM.g.pitch; CAM.dist=CAM.g.dist; computeView(); }
+// touch and hold (about half a second without moving): inspect the soldier and open the orders panel for
+// your regiment there
+let LP=null;
+function longPress(p){
+  const W=worldAt(p[0],p[1]); if(!W) return false;
+  if(GAME.phase==='deploy'){ const gi=pickGroup(W); if(gi<0) return false; if(!D.selObj.has(D.groups[gi])) selectGroup(gi); PANEL_OPEN=true; renderGroupPanel(); return true; }
+  const i=pickUnit(W,2.4,null); if(i<0) return false;
+  inspectUnit(i);
+  // (the soldier card carries the regiment's orders, so the separate orders panel stays shut)
+  if(GAME.phase==='battle'&&battleTeams().includes(TM[i])&&!BSEL.has(GR[i])) setBattleSel([GR[i]]);
+  return true; }
 stage.addEventListener('pointerdown',e=>{
   try{ stage.setPointerCapture(e.pointerId); }catch(_){}
   const p=spos(e); PTR.set(e.pointerId,{p,start:p,t:performance.now()});
   closePops();
-  if(PTR.size===1) beginSingle(e,p); else if(PTR.size===2){ cancelSingle(); beginPinch(); }
+  if(LP){ clearTimeout(LP.timer); LP=null; }
+  if(PTR.size===1){ beginSingle(e,p);
+    if(GST&&(GST.kind==='pan'||GST.kind==='move'||GST.kind==='box')&&e.button===0&&!D.terrain){ const id=e.pointerId;
+      LP={id,timer:setTimeout(()=>{ const o=PTR.get(id); if(!LP||LP.id!==id||!o||!GST||Math.hypot(o.p[0]-o.start[0],o.p[1]-o.start[1])>10) return;
+        const kind=GST.kind; if(longPress(o.p)){ if(kind==='move'&&D.undo.length) D.undo.pop(); GST={kind:'held'}; try{ navigator.vibrate&&navigator.vibrate(12); }catch(_){} } LP=null; },480)}; } }
+  else if(PTR.size===2){ if(LP){ clearTimeout(LP.timer); LP=null; } cancelSingle(); beginPinch(); }
   e.preventDefault();
 });
 let HOVER=null, HOVER_T=0;
@@ -865,7 +885,7 @@ function moveSingle(p){
   else if(GST.kind==='box'){ GST.b=p; }
 }
 function endSingle(o){
-  const g=GST; GST=null; if(!g) return;
+  const g=GST; GST=null; if(LP){ clearTimeout(LP.timer); LP=null; } if(!g||g.kind==='held') return;
   const moved=Math.hypot(o.p[0]-o.start[0],o.p[1]-o.start[1]), dt=performance.now()-o.t;
   if(g.kind==='tool') toolEnd(); else if(g.kind==='terrain') terrainEnd(); else if(g.kind==='move'){ moveEnd(g.gi); if(moved<6&&dt<450&&isDoubleTap(o.p)){ if(D.undo.length) D.undo.pop(); haltOrCharge(o.p); } }
   else if(g.kind==='pan' && moved<8 && dt<450) tap(o.p);
@@ -901,12 +921,12 @@ function haltOrCharge(p){
   return false; }
 function boxTap(p,add){ if(isDoubleTap(p)&&haltOrCharge(p)) return; const W=worldAt(p[0],p[1]);
   if(GAME.phase==='deploy'){ if(!add) selectGroup(-1); return; }
-  const i=W?pickUnit(W,2.4,battleTeams()):-1; setBattleSel(i>=0?[GR[i]]:[],add); }
+  const i=W?pickUnit(W,2.4,battleTeams()):-1; if(BSELMODE) PANEL_OPEN=true; setBattleSel(i>=0?[GR[i]]:[],add); }
 function tap(p){
   if(isDoubleTap(p)&&haltOrCharge(p)) return;
   const W=worldAt(p[0],p[1]); if(!W) return;
   if(GAME.phase==='deploy'){ selectGroup(pickGroup(W)); return; }
-  inspectUnit(pickUnit(W,2.4,null));
+  inspectUnit(-1);
 }
 const KEYS=new Set();
 window.addEventListener('keydown',e=>{
@@ -949,7 +969,7 @@ function showWelcome(){
     <button class="btn" id="wMore">Endless & Survival</button>
     <button class="btn ghost" id="wWatch">Keep watching</button>
   </div>
-  <div class="hint">Drag to pan · scroll or pinch to zoom · right-drag or two-finger twist to turn · WASD and Q/E fly the camera · Space pauses · 1, 2, 3 set 1×, 3×, 9× speed · T opens the tech tree · tap a soldier to inspect it · double tap a regiment to halt it or send it charging</div>`,s=>{
+  <div class="hint">Drag to pan · scroll or pinch to zoom · right-drag or two-finger twist to turn · WASD and Q/E fly the camera · Space pauses · 1, 2, 3 set 1×, 3×, 9× speed · T opens the tech tree · touch and hold a soldier (or a regiment while deploying) for its details and orders · double tap a regiment to halt it or send it charging</div>`,s=>{
     $('#wX').onclick=closeModal; $('#wWatch').onclick=closeModal;
     $('#wCamp').onclick=()=>campaignDone()?showBattles('campaign'):openCampaign(PROG.level);
     $('#wSand').onclick=()=>showBattles('sandbox'); $('#wCustom').onclick=()=>showBattles('custom'); $('#wMore').onclick=()=>showBattles('endless');
