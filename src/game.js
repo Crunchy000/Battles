@@ -908,7 +908,7 @@ window.addEventListener('keydown',e=>{
   if(e.target.closest&&e.target.closest('input,textarea,select')) return;
   const k=e.key.toLowerCase();
   if(k===' '){ if(GAME.phase==='battle'){ e.preventDefault(); setSpeed(GAME.speed?0:GAME.lastSpeed||1); } return; }
-  if(GAME.phase==='battle'&&(k==='1'||k==='2'||k==='3'||k==='0')){ setSpeed({0:0,1:1,2:2,3:4}[k]); return; }
+  if(GAME.phase==='battle'&&(k==='1'||k==='2'||k==='3'||k==='0')){ setSpeed({0:0,1:1,2:3,3:9}[k]); return; }
   if(k==='f'&&GAME.phase==='deploy'&&$('#modal').hidden){ startBattle(); return; }
   if((e.ctrlKey||e.metaKey)&&k==='z'){ e.preventDefault(); undo(); return; }
   if(k==='delete'||k==='backspace'){ deleteSelected(); return; }
@@ -944,7 +944,7 @@ function showWelcome(){
     <button class="btn" id="wMore">Endless & Survival</button>
     <button class="btn ghost" id="wWatch">Keep watching</button>
   </div>
-  <div class="hint">Drag to pan · scroll or pinch to zoom · right-drag or two-finger twist to turn · WASD and Q/E fly the camera · Space pauses · T opens the tech tree · tap a soldier to inspect it</div>`,s=>{
+  <div class="hint">Drag to pan · scroll or pinch to zoom · right-drag or two-finger twist to turn · WASD and Q/E fly the camera · Space pauses · 1, 2, 3 set 1×, 3×, 9× speed · T opens the tech tree · tap a soldier to inspect it</div>`,s=>{
     $('#wX').onclick=closeModal; $('#wWatch').onclick=closeModal;
     $('#wCamp').onclick=()=>campaignDone()?showBattles('campaign'):openCampaign(PROG.level);
     $('#wSand').onclick=()=>showBattles('sandbox'); $('#wCustom').onclick=()=>showBattles('custom'); $('#wMore').onclick=()=>showBattles('endless');
@@ -1199,8 +1199,9 @@ function loop(now){
   if(GAME.phase==='battle'){
     const sp=GAME.speed; acc+=dt*sp; let steps=0;
     // at most ~14 ms of simulation per frame: a huge battle on a slow device runs a little slower instead of stuttering
-    const t0=performance.now();
-    while(acc>=DT && steps<6 && (steps===0||performance.now()-t0<14)){ simTick(); afterTick(); acc-=DT; steps++; }
+    // fast speeds get a bigger slice of the frame (9× needs about three ticks a frame at 60 fps)
+    const t0=performance.now(), budget=sp>=9?24:sp>=3?18:14, maxSteps=sp>=9?14:sp>=3?8:6;
+    while(acc>=DT && steps<maxSteps && (steps===0||performance.now()-t0<budget)){ simTick(); afterTick(); acc-=DT; steps++; }
     if(acc>=DT) acc=Math.min(acc,DT*0.99);
     VIEW.alpha=sp>0?clamp(acc/DT,0,1):1;
     VIEW.time+=dt*sp;

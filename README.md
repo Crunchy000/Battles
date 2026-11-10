@@ -16,7 +16,7 @@ A large-scale army battle game that runs in the browser on WebGPU. Deploy thousa
 
 ## Controls
 
-Drag empty ground to pan · drag a regiment to move it · scroll or pinch to zoom · right-drag or two-finger twist to turn · WASD and Q/E fly the camera · Space pauses · 1/2/3 set speed · T opens the tech tree · M mutes · tap a soldier to inspect it.
+Drag empty ground to pan · drag a regiment to move it · scroll or pinch to zoom · right-drag or two-finger twist to turn · WASD and Q/E fly the camera · Space pauses · 1/2/3 set 1×/3×/9× speed · T opens the tech tree · M mutes · tap a soldier to inspect it.
 
 ## Browser support
 
