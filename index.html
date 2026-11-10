@@ -3358,8 +3358,7 @@ function movePinch(){
   if(GST.W0){ const W=worldAtPlane(m[0],m[1],GST.h); if(W){ CAM.g.tx+=GST.W0[0]-W[0]; CAM.g.tz+=GST.W0[1]-W[1]; camClamp(CAM.g); snapCam(); } }
 }
 function zoomAt(p,f){ const W0=worldAtPlane(p[0],p[1],CAM.ty); CAM.g.dist=clamp(CAM.g.dist*f,6,CAM_MAX); CAM.follow=-1; snapCam(); if(W0){ const W=worldAtPlane(p[0],p[1],CAM.ty); if(W){ CAM.g.tx+=W0[0]-W[0]; CAM.g.tz+=W0[1]-W[1]; camClamp(CAM.g); snapCam(); } } }
-// Double tap a regiment to halt it, or (if it is already halted or doing anything but charging) to send it
-// charging; double tap again to halt it. When the regiment is part of the selection, the whole selection
+// Double tap a regiment to send it in (charging; cavalry ride round the flank instead), and again to halt it. When the regiment is part of the selection, the whole selection
 // gets the order. Commanders and medics keep marching with their regiments.
 let LAST_TAP={t:0,p:[0,0]};
 function isDoubleTap(p){ const now=performance.now(), dbl=now-LAST_TAP.t<400&&Math.hypot(p[0]-LAST_TAP.p[0],p[1]-LAST_TAP.p[1])<40; LAST_TAP=dbl?{t:0,p:[0,0]}:{t:now,p}; return dbl; }
@@ -3368,13 +3367,13 @@ function haltOrCharge(p){
   if(GAME.phase==='battle'){ const i=pickUnit(W,2.4,battleTeams()); if(i<0) return false; const gi=GR[i];
     let list=BSEL.has(gi)?[...BSEL]:[gi]; if(!BSEL.has(gi)) setBattleSel([gi]);
     if(list.some(k=>G[k]&&!sup(G[k].type))) list=list.filter(k=>G[k]&&!sup(G[k].type));
-    const charge=!list.every(k=>G[k].order===O_CHARGE); for(const k of list) setBattleOrder(k,charge?O_CHARGE:O_HOLD);
-    toast(charge?'Charge!':'Halt',1100); renderGroupPanel(); return true; }
+    const go=k=>UNITS[G[k].type].cls==='cav'?O_FLANK:O_CHARGE, charge=!list.every(k=>G[k].order===go(k)); for(const k of list) setBattleOrder(k,charge?go(k):O_HOLD);
+    toast(charge?(list.every(k=>go(k)===O_FLANK)?'Flank!':'Charge!'):'Halt',1100); renderGroupPanel(); return true; }
   if(GAME.phase==='deploy'){ const gi=pickGroup(W); if(gi<0) return false; const g=D.groups[gi];
     let list=D.selObj.has(g)?selGroups():[g]; if(!D.selObj.has(g)) selectGroup(gi);
     if(list.some(x=>!sup(x.type))) list=list.filter(x=>!sup(x.type));
-    const charge=!list.every(x=>x.order==='charge'); for(const x of list) x.order=charge?'charge':'hold';
-    toast(charge?'Will charge':'Will hold',1100); renderGroupPanel(); return true; }
+    const go=x=>UNITS[x.type].cls==='cav'?'flank':'charge', charge=!list.every(x=>x.order===go(x)); for(const x of list) x.order=charge?go(x):'hold';
+    toast(charge?(list.every(x=>go(x)==='flank')?'Will flank':'Will charge'):'Will hold',1100); renderGroupPanel(); return true; }
   return false; }
 function boxTap(p,add){ if(isDoubleTap(p)&&haltOrCharge(p)) return; const W=worldAt(p[0],p[1]);
   if(GAME.phase==='deploy'){ if(!add) selectGroup(-1); return; }
