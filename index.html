@@ -221,6 +221,8 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:12px;min-height:72px
 .rec .own{font-family:var(--f-ui);font-size:13px;color:var(--muted);text-align:right;margin-bottom:4px;font-variant-numeric:tabular-nums}
 .rec .own b{color:var(--fg);font-size:16px}
 .rec .buy{display:flex;gap:5px;justify-content:flex-end}
+.rec .buy+.buy{margin-top:5px}
+.btn.sell{color:var(--muted);font-size:12px}
 /* tech tree */
 .tree{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(170px,1fr);gap:12px;overflow-x:auto;padding-bottom:6px}
 .branch h5{margin:0 0 8px;font-family:var(--f-ui);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--brass)}
@@ -3544,8 +3546,10 @@ function showCouncil(tab){
     const rows=UNITS.map((u,i)=>{ if(!fieldable(u.id)) return ''; const s=ps[i], own=PROG.roster[u.id]||0;
       const b=n=>{ const c=u.cost*n; return `<button class="btn sm" data-buy="${u.id}" data-n="${n}"${PROG.gold<c?' disabled':''}>+${n} · ${fmt(c)}</button>`; };
       const big=capOf()>=2000?b(1000):'';
-      return `<div class="rec">${unitIcon(i)}<div style="min-width:0"><div class="t">${u.name}<small>${u.role}</small></div><div class="st">HP ${Math.round(s.hp)} · ARM ${s.armor.toFixed(1).replace('.0','')} · DMG ${Math.round(s.dmg)} · RNG ${u.isR?Math.round(s.range):s.range.toFixed(1)} · SPD ${s.speed.toFixed(1)} · ${u.cost}g each</div></div><div><div class="own"><b>${fmt(own)}</b> owned</div><div class="buy">${u.cls==='sie'?b(1)+b(5):b(10)+b(100)}${big}</div></div></div>`; }).join('');
-    body=`<p class="lede">Recruits join your roster permanently. You can field up to <b>${fmt(capOf())}</b> at once; research Logistics to raise the cap. Roster: <b>${fmt(rosterTotal())}</b>.</p><div class="list">${rows}</div>`;
+      // selling refunds half the price
+      const sl=n=>{ const k=Math.min(n,own); return `<button class="btn sm ghost sell" data-sell="${u.id}" data-n="${n}"${k<=0?' disabled':''} title="Dismiss ${fmt(k)} for ${fmt(Math.floor(u.cost*k/2))} gold (half price)">−${fmt(k>0?k:n)} · +${fmt(Math.floor(u.cost*k/2))}</button>`; };
+      return `<div class="rec">${unitIcon(i)}<div style="min-width:0"><div class="t">${u.name}<small>${u.role}</small></div><div class="st">HP ${Math.round(s.hp)} · ARM ${s.armor.toFixed(1).replace('.0','')} · DMG ${Math.round(s.dmg)} · RNG ${u.isR?Math.round(s.range):s.range.toFixed(1)} · SPD ${s.speed.toFixed(1)} · ${u.cost}g each</div></div><div><div class="own"><b>${fmt(own)}</b> owned</div><div class="buy">${u.cls==='sie'?b(1)+b(5):b(10)+b(100)}${big}</div><div class="buy">${u.cls==='sie'||u.cls==='sup'?sl(1)+sl(5):sl(10)+sl(100)}${own>0?`<button class="btn sm ghost sell" data-sell="${u.id}" data-n="${own}" title="Dismiss all ${fmt(own)} for ${fmt(Math.floor(u.cost*own/2))} gold">Sell all</button>`:''}</div></div></div>`; }).join('');
+    body=`<p class="lede">Recruits join your roster permanently; dismissing soldiers refunds half their price. You can field up to <b>${fmt(capOf())}</b> at once; research Logistics to raise the cap. Roster: <b>${fmt(rosterTotal())}</b>.</p><div class="list">${rows}</div>`;
   } else if(tab==='tech'){
     const cols=BRANCHES.map((bn,b)=>{ const nodes=TECH.filter(t=>t.b===b).map(t=>{ const own=owned(t.id), avail=!own&&t.req.every(owned);
       const u=t.unit?UNITS[UID[t.unit]]:null;
@@ -3565,6 +3569,7 @@ function showCouncil(tab){
   <div class="tabs">${tabs.map(([k,n])=>`<button class="tab${k===tab?' on':''}" data-tab="${k}">${n}</button>`).join('')}</div>${body}`,s=>{
     $('#cX').onclick=closeModal; const cn=s.querySelector('#cNext'); if(cn) cn.onclick=()=>nextAction()[1]();
     s.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>showCouncil(b.dataset.tab));
+    s.querySelectorAll('[data-sell]').forEach(b=>b.onclick=()=>{ const id=b.dataset.sell, own=PROG.roster[id]||0, n=Math.min(+b.dataset.n,own); if(n<=0) return; PROG.roster[id]=own-n; PROG.gold+=Math.floor(UNITS[UID[id]].cost*n/2); saveProg(); toast(`Dismissed ${fmt(n)} ${UNITS[UID[id]].name.toLowerCase()} for ${fmt(Math.floor(UNITS[UID[id]].cost*n/2))} gold`,1800); keepScroll(()=>showCouncil('recruit')); afterProgressChange(); });
     s.querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>{ const id=b.dataset.buy, n=+b.dataset.n, c=UNITS[UID[id]].cost*n; if(PROG.gold<c) return; PROG.gold-=c; PROG.roster[id]=(PROG.roster[id]||0)+n; saveProg(); keepScroll(()=>showCouncil('recruit')); afterProgressChange(); });
     s.querySelectorAll('[data-tech]').forEach(b=>b.onclick=()=>{ const t=TECHBY[b.dataset.tech]; if(PROG.gold<t.cost) return; PROG.gold-=t.cost; PROG.tech[t.id]=true; let msg=`${t.name} researched`;
       if(t.unit){ const prev=PREV_TIER[t.unit], conv=prev?(PROG.roster[prev]||0):0;
@@ -3577,7 +3582,10 @@ function showCouncil(tab){
 function keepScroll(fn){ const s=$('#sheet'), y=s.scrollTop, tree=s.querySelector('.tree'), tx=tree?tree.scrollLeft:0; fn(); s.scrollTop=y; const t2=s.querySelector('.tree'); if(t2) t2.scrollLeft=tx; }
 // wipe the campaign and the army, keeping only saved layouts
 function resetProgress(){ const saves=PROG.saves||[]; PROG=defaultProg(); PROG.saves=saves; saveProg(); normalizeRoster(); openCampaign(1); toast('Progress reset. A fresh army stands ready for battle 1.',3200); }
-function afterProgressChange(){ updateHud(true); if(GAME.phase==='deploy'&&GAME.limited){ STT[0]=playerStats(); for(const g of D.groups) if(g.team===0) g.type=UID[currentTier(UNITS[g.type].id)]; syncDeploy(); buildDeployDock(); } }
+function afterProgressChange(){ updateHud(true); if(GAME.phase==='deploy'&&GAME.limited){ STT[0]=playerStats(); for(const g of D.groups) if(g.team===0) g.type=UID[currentTier(UNITS[g.type].id)];
+    // soldiers dismissed in the Council leave the field too: lay the army out again
+    const c=deployCounts(0).by; if(UNITS.some((u,i)=>c[i]>(PROG.roster[u.id]||0))){ relayout(0); return; }
+    syncDeploy(); buildDeployDock(); } }
 // what "continue" means after a battle, so the player is never stuck on the results
 function nextAction(){
   if(GAME.mode==='campaign'){ const L=GAME.level, won=GAME.winner===0;
