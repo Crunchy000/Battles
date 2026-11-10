@@ -306,7 +306,6 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:12px;min-height:72px
       <div class="spacer"></div>
       <button class="btn sm" id="btnResearch" title="Open the tech tree (T)" hidden>Research</button>
       <button class="btn sm" id="btnUndo" title="Undo">Undo</button>
-      <button class="btn sm" id="btnSaves">Saves</button>
       <button class="btn sm danger" id="btnClear">Clear</button>
       <button class="btn primary fight" id="btnFight">Fight</button>
     </div>
@@ -349,7 +348,6 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:12px;min-height:72px
 <div class="card inspect" id="inspect" hidden></div>
 <div class="card grouppanel" id="groupPanel" hidden></div>
 <div class="pop" id="brushPop" hidden></div>
-<div class="pop" id="savePop" hidden></div>
 <div class="pop top" id="soundPop" hidden></div>
 <div class="card stats" id="statsPanel" hidden></div>
 <div class="toast" id="toast" hidden></div>
@@ -2775,7 +2773,7 @@ let bannerT=0;
 function banner(text,color,ms){ const b=$('#banner'); b.textContent=text; b.style.color=color||'var(--fg)'; b.hidden=false; clearTimeout(bannerT); bannerT=setTimeout(()=>b.hidden=true,ms||1600); }
 function openModal(html,onMount){ const m=$('#modal'), s=$('#sheet'); $('#toast').hidden=true; s.innerHTML=html; m.hidden=false; s.scrollTop=0; if(onMount) onMount(s); }
 function closeModal(){ $('#modal').hidden=true; }
-function closePops(){ $('#brushPop').hidden=true; $('#savePop').hidden=true; $('#soundPop').hidden=true; }
+function closePops(){ $('#brushPop').hidden=true; $('#soundPop').hidden=true; }
 function hideCards(){ $('#inspect').hidden=true; $('#groupPanel').hidden=true; $('#statsPanel').hidden=true; closePops(); VIEW.hlUnit=-1; }
 $('#modal').addEventListener('pointerdown',e=>{ if(e.target.id==='modal') closeModal(); });
 function showDock(which){
@@ -2824,7 +2822,7 @@ function autoCounts(){
 // extra layout hints for the map: the fortress gates for an attacking army
 function formOpt(team){ return GAME.mapId==='fortress'&&team===0&&GAME.mode!=='survival'?{gates:FORT_GATES.map(g=>g*MS)}:{}; }
 function playerLayout(T,saved,opt){
-  return validateGroups(layoutAuto(0,autoCounts(),T,Object.assign({cav:PROG.cav||'wings'},formOpt(0),opt||{})),T);
+  return validateGroups(layoutAuto(0,autoCounts(),T,Object.assign({cav:'wings'},formOpt(0),opt||{})),T);
 }
 function enterDeploy(cfg){
   closeModal(); hideCards(); $('#banner').hidden=true;
@@ -2837,7 +2835,7 @@ function enterDeploy(cfg){
   STT=[playerStats(),enemyStats(GAME.enemyUlv)];
   D.groups=[]; D.nextId=1; D.nextBk=1; D.undo=[]; D.sel=-1; D.selObj.clear(); BSEL.clear(); D.team=GAME.editTeams[0]; D.terrain=false; D.stroke=null;
   D.fo=[{form:'ranks',order:null,cav:'wings'},{form:'ranks',order:null,cav:'wings'}];
-  if(GAME.limited) D.fo[0]={form:'ranks',order:null,cav:PROG.cav||'wings'};
+  if(GAME.limited) D.fo[0]={form:'ranks',order:null,cav:'wings'};
   D.block=null; D.auto=true;
   const gs=cfg.groups || (cfg.makeGroups?cfg.makeGroups(TER):[]);
   addDeployGroups(gs);
@@ -3255,7 +3253,6 @@ function relayout(t){
   if(GAME.limited&&GAME.mode==='survival'&&t===0) gs=layoutSurvival(autoCounts(),TER);
   else gs=layoutAuto(t,teamCounts(t),TER,Object.assign({cav:D.fo[t].cav},formOpt(t)));
   gs=validateGroups(gs,TER); D.groups=D.groups.filter(g=>g.team!==t); addDeployGroups(gs); D.auto=true;
-  if(GAME.limited&&t===0){ PROG.cav=D.fo[0].cav; saveProg(); }
   syncDeploy(); buildDeployDock();
 }
 /* ---------- ready-made blocks ---------- */
@@ -3320,6 +3317,8 @@ function buildDeployDock(){
   $('#sideSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on',+b.dataset.side===D.team));
   $('#btnTerrain').classList.toggle('on',D.terrain); $('#btnTerrain').textContent=D.terrain?'Back to troops':'Map editor';
   const av=availableTypes(); if(!av.includes(D.type)){ const up=UID[currentTier(UNITS[D.type].id)]; D.type=av.includes(up)?up:(av[0]||0); }
+  // a formation the reserve can no longer fill is put down
+  if(D.block&&!D.terrain){ const bk=BLOCK_BY[D.block]; if(!bk||!fillBlock(bk,reservePool(editTeam()),1e9).some(n=>n>0)) D.block=null; }
   const chips=$('#chips'); chips.innerHTML='';
   if(D.terrain){
     TERRAIN_TOOLS.forEach(([id,name,col])=>{ const b=document.createElement('button'); b.className='chip'+(D.ttool===id?' on':''); b.innerHTML=`<span class="swatch" style="background:${col}"></span><span class="nm">${name}</span>`; b.onclick=()=>{ D.ttool=id; buildDeployDock(); }; chips.appendChild(b); });
@@ -3357,15 +3356,14 @@ function buildDeployDock(){
     const t=editTeam(), f=D.fo[t];
     const lim=GAME.limited&&t===0;
     const pool=reservePool(t);
-    BLOCKS.forEach(bk=>{ if(!blockShown(bk,t)) return; const on=D.block===bk.id, n=fillBlock(bk,pool,1e9).reduce((a,b)=>a+b,0), b=document.createElement('button'); b.className='ftile'+(on?' on':'')+(n?'':' empty');
+    const shown=BLOCKS.filter(bk=>blockShown(bk,t)&&fillBlock(bk,pool,1e9).some(n=>n>0)); if(D.block&&!shown.some(bk=>bk.id===D.block)) D.block=null;
+    if(!shown.length) tools.insertAdjacentHTML('beforeend','<span class="hint" style="align-self:center">Everyone is on the field.</span>');
+    shown.forEach(bk=>{ const on=D.block===bk.id, b=document.createElement('button'); b.className='ftile'+(on?' on':'');
       b.innerHTML=blockIcon(bk.id)+`<span>${bk.name}</span>`;
       b.title=`${bk.name}, ${blockN(bk)} soldiers. ${bk.desc}`; b.setAttribute('aria-pressed',on); b.onclick=()=>armBlock(bk.id); tools.appendChild(b); });
     tools.insertAdjacentHTML('beforeend','<span class="vsep"></span>');
-    const au=document.createElement('button'); au.className='btn sm primary'; au.style.alignSelf='center'; au.textContent='Auto army'; au.title='Place everyone you can field: line regiments side by side, each with its share of every kind of soldier, horse on the wings or behind';
+    const au=document.createElement('button'); au.className='btn sm primary'; au.style.alignSelf='center'; au.textContent='Auto army'; au.title='Place everyone you can field: line regiments side by side, each with its share of every kind of soldier, horse on the wings';
     au.onclick=()=>{ pushUndo(); D.block=null; relayout(t); }; tools.appendChild(au);
-    if(!surv){ const cav=document.createElement('div'); cav.className='seg'; cav.setAttribute('role','group'); cav.setAttribute('aria-label','Cavalry position for Auto army'); cav.style.alignSelf='center';
-      cav.innerHTML=`<button class="btn sm${f.cav!=='rear'?' on':''}" data-cav="wings">Horse on wings</button><button class="btn sm${f.cav==='rear'?' on':''}" data-cav="rear">Horse behind</button>`;
-      cav.querySelectorAll('[data-cav]').forEach(b=>b.onclick=()=>{ pushUndo(); f.cav=b.dataset.cav; relayout(t); }); tools.appendChild(cav); }
   }
   refreshDeployUi();
 }
@@ -3429,20 +3427,6 @@ function renderBrushPop(){
   bind('bpSize','size',v=>v+' m'); bind('bpDen','density',v=>v.toFixed(2)+'×'); bind('bpRanks','ranks',v=>String(v));
   $('#bpX').onclick=closePops; $('#bpL').onclick=()=>{ D.rot+=Math.PI/12; renderBrushPop(); }; $('#bpR').onclick=()=>{ D.rot-=Math.PI/12; renderBrushPop(); }; $('#bp0').onclick=()=>{ D.rot=0; renderBrushPop(); };
 }
-function renderSavePop(){
-  const p=$('#savePop'); const team=D.team;
-  p.innerHTML=`<h4>Saved formations<button class="x" id="spX" aria-label="Close">×</button></h4>
-  <div class="row"><input type="text" id="spName" placeholder="Formation name" value="Formation ${PROG.saves.length+1}" aria-label="Formation name"><button class="btn sm primary" id="spSave">Save</button></div>
-  <div class="list" id="spList">${PROG.saves.length?PROG.saves.map((s,k)=>`<div class="row" style="border-top:1px solid var(--line2);padding-top:6px"><span class="hudtext" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(s.name)} <span style="color:var(--dim)">· ${fmt(s.groups.reduce((a,g)=>a+g.slots.length/3,0))}</span></span><button class="btn sm" data-load="${k}">Load</button><button class="btn sm ghost" data-del="${k}" aria-label="Delete">×</button></div>`).join(''):'<div class="hint">No saved formations yet.</div>'}</div>
-  <details><summary class="hint" style="cursor:pointer">Share as code</summary><div style="display:flex;flex-direction:column;gap:6px;margin-top:6px"><textarea id="spCode" aria-label="Formation code" placeholder="Paste a formation code here"></textarea><div class="row"><button class="btn sm" id="spCopy">Copy current</button><button class="btn sm" id="spPaste">Load code</button></div></div></details>`;
-  const cur=()=>serializeGroups(D.groups.filter(g=>g.team===team));
-  $('#spX').onclick=closePops;
-  $('#spSave').onclick=()=>{ const gs=cur(); if(!gs.length){ toast('Nothing to save yet'); return; } PROG.saves.push({name:($('#spName').value||'Formation').slice(0,40),groups:gs}); saveProg(); renderSavePop(); toast('Formation saved'); };
-  p.querySelectorAll('[data-load]').forEach(b=>b.onclick=()=>loadFormation(PROG.saves[+b.dataset.load].groups));
-  p.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ PROG.saves.splice(+b.dataset.del,1); saveProg(); renderSavePop(); });
-  $('#spCopy').onclick=()=>{ const code=btoa(unescape(encodeURIComponent(JSON.stringify(cur())))); const ta=$('#spCode'); ta.value=code; ta.select(); if(navigator.clipboard) navigator.clipboard.writeText(code).then(()=>toast('Code copied'),()=>toast('Code selected. Copy it from the box.')); else toast('Code selected. Copy it from the box.'); };
-  $('#spPaste').onclick=()=>{ try{ const arr=JSON.parse(decodeURIComponent(escape(atob($('#spCode').value.trim())))); loadFormation(arr); }catch(e){ toast('That code could not be read. Check it was copied in full.'); } };
-}
 function loadFormation(arr){
   pushUndo();
   let gs=validateGroups(deserializeGroups(arr,D.team),TER); if(GAME.limited) gs=trimToRoster(gs);
@@ -3454,7 +3438,6 @@ $('#btnTerrain').onclick=()=>{ D.terrain=!D.terrain; selectGroup(-1); buildDeplo
 $('#btnUndo').onclick=undo;
 $('#btnResearch').onclick=()=>showCouncil('tech');
 $('#btnClear').onclick=clearTeam;
-$('#btnSaves').onclick=()=>{ const p=$('#savePop'); const show=p.hidden; closePops(); if(show){ renderSavePop(); p.hidden=false; } };
 $('#btnFight').onclick=()=>startBattle();
 
 /* ---------- battle dock ---------- */
@@ -3742,7 +3725,7 @@ function showCouncil(tab){
   });
 }
 function keepScroll(fn){ const s=$('#sheet'), y=s.scrollTop, tree=s.querySelector('.tree'), tx=tree?tree.scrollLeft:0; fn(); s.scrollTop=y; const t2=s.querySelector('.tree'); if(t2) t2.scrollLeft=tx; }
-// wipe the campaign and the army, keeping only saved layouts
+// wipe the campaign and the army
 function resetProgress(){ const saves=PROG.saves||[]; PROG=defaultProg(); PROG.saves=saves; saveProg(); normalizeRoster(); openCampaign(1); toast('Progress reset. A fresh army stands ready for battle 1.',3200); }
 function afterProgressChange(){ updateHud(true); if(GAME.phase==='deploy'&&GAME.limited){ STT[0]=playerStats(); for(const g of D.groups) if(g.team===0) g.type=UID[currentTier(UNITS[g.type].id)]; syncDeploy(); buildDeployDock(); } }
 // what "continue" means after a battle, so the player is never stuck on the results
