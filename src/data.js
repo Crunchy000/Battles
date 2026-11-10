@@ -78,7 +78,7 @@ const TECH=[
  {id:'shieldwall',b:0,name:'Shield Wall',cost:800,req:['shield'],desc:'Shieldbearers block 70% of frontal missiles and give +5 armour to neighbours.'},
  {id:'bers',  b:0,name:'Berserkers',cost:600,req:['spear'],unit:'bers'},
  {id:'heavy', b:0,name:'Heavy Infantry',cost:900,req:['shield'],unit:'heavy'},
- {id:'elite', b:0,name:'Champions',cost:4500,req:['heavy','cmdr'],unit:'elite',desc:'Unlocks Champions blocks: forty of the finest fighters in the army. Your other blocks keep their heavy infantry.'},
+ {id:'elite', b:0,name:'Champions',cost:4500,req:['heavy','cmdr'],unit:'elite'},
  {id:'archer',b:1,name:'Archers',cost:0,req:[],unit:'archer'},
  {id:'firearrows',b:1,name:'Bodkin Arrows',cost:450,req:['archer'],desc:'Archers and crossbowmen deal 30% more damage.'},
  {id:'xbow',  b:1,name:'Crossbowmen',cost:450,req:['archer'],unit:'xbow'},
@@ -458,17 +458,17 @@ function layoutFormation(team,counts,T,form,order,opt={}){
   // centre on the widest open run of ground near the front
   const probeX=front-dir*6; let bestA=-80,bestB=80,runA=null,bestLen=0;
   for(let z=Z0+4; z<=Z1-4; z+=2){ const ok=passAtT(T,probeX,z)&&passAtT(T,probeX-dir*20,z); if(ok){ if(runA===null) runA=z; if(z-runA>bestLen){ bestLen=z-runA; bestA=runA; bestB=z; } } else runA=null; }
-  const zc=opt.zc!==undefined?opt.zc:(bestA+bestB)/2, Wmax=opt.Wmax||Math.max(20,(bestB-bestA)*0.9);
+  const zc=(bestA+bestB)/2, Wmax=Math.max(20,(bestB-bestA)*0.9);
   const groups=[]; const mk=(t,cx,cz,slots,a)=>{ if(!slots.length) return null; const g={team,type:t,order:defaultOrder(t),cx,cz,a:a===undefined?face:a,slots,k:0}; groups.push(g); return g; };
   const has=t=>t!==undefined&&counts[t]>0;
   // combat bands in the requested order, then any present type the order left out
   let bands=(order&&order.length?order:formationOrder(F.id)).map(id=>UID[id]).filter(t=>has(t)&&(UNITS[t].cls==='inf'||UNITS[t].cls==='rng'));
   UNITS.forEach((u,t)=>{ if(has(t)&&(u.cls==='inf'||u.cls==='rng')&&!bands.includes(t)) bands.push(t); });
   const sup=['cmdr','medic'].map(id=>UID[id]).filter(has), eng=UID.eng;
-  const cav=opt.noCav?[]:UNITS.map((u,t)=>t).filter(t=>has(t)&&UNITS[t].cls==='cav'), sie=UNITS.map((u,t)=>t).filter(t=>has(t)&&UNITS[t].cls==='sie');
+  const cav=UNITS.map((u,t)=>t).filter(t=>has(t)&&UNITS[t].cls==='cav'), sie=UNITS.map((u,t)=>t).filter(t=>has(t)&&UNITS[t].cls==='sie');
   let area=0; for(const t of bands) area+=counts[t]*UNITS[t].sp**2;
   const W=clamp(Math.sqrt(Math.max(area,1)*(F.aspect||3.2)),18,Wmax);
-  let depth=opt.depth0||0, span=opt.span||W, supDone=bands.length>0;
+  let depth=0, span=W, supDone=bands.length>0;
   // one band of type t, `width` wide, centred on z, starting dd metres behind the front; split into blocks about 22 m wide
   const band=(t,n,width,z,dd,k)=>{ const sp=UNITS[t].sp, cols=Math.max(1,Math.min(n,Math.floor(width/sp))), rows=Math.ceil(n/cols);
     const parts=Math.max(1,Math.min(8,Math.round(cols*sp/22))); let left=n, c0=0;
@@ -552,7 +552,7 @@ function layoutFormation(team,counts,T,form,order,opt={}){
   // orders that come with the formation
   for(const g of groups){ const c=UNITS[g.type].cls, u=clamp((g.cz-zc)/(span/2),-1,1);
     g.order= g.type===eng?'hold' : c==='sup'?'advance' : c==='cav'?(g.rear&&F.reserve?'hold':'flank') : c==='sie'?(F.siege||'advance') : F.orders(ROLE[UNITS[g.type].id]||'melee',g.k|0,u); }
-  return opt.noPlace?groups:placeGroups(groups,T,ZONES[team],dir,opt.pre);
+  return placeGroups(groups,T,ZONES[team],dir);
 }
 // Spread commanders and medics through the infantry and missile regiments. Each regiment gets a few
 // empty places scattered through its ranks (never the front rank); the officers and medics stand in
@@ -587,17 +587,15 @@ function embedSupport(groups,counts,sup,dir){
 let PLACE_OFF=null;
 function placeOffsets(){ if(PLACE_OFF) return PLACE_OFF; const L=[]; for(let a=-60;a<=60;a+=1.5) for(let b=-60;b<=60;b+=1.5){ const d=Math.hypot(a,b); if(d>0&&d<=60) L.push([a,b,d+(a<0?a*-0.3:0)]); }
   L.sort((p,q)=>p[2]-q[2]); PLACE_OFF=new Float32Array(L.length*2); L.forEach((p,i)=>{ PLACE_OFF[i*2]=p[0]; PLACE_OFF[i*2+1]=p[1]; }); return PLACE_OFF; }
-function placeGroups(groups,T,zone,dir,pre){
+function placeGroups(groups,T,zone,dir){
   const ok=(x,z)=>passAtT(T,x,z)&&x>=zone[0]&&x<=zone[1]&&z>Z0+2&&z<Z1-2;
   const occ=new Set(), key=(x,z)=>Math.round(x)*4096+Math.round(z);
   const near=(x,z)=>{ const X=Math.round(x), Z=Math.round(z); for(let a=-1;a<=1;a++) for(let b=-1;b<=1;b++) if(occ.has((X+a)*4096+Z+b)) return true; return false; };
   const pts=g=>{ const out=[]; for(let k=0;k<g.slots.length;k+=3) out.push(localToWorld(g,g.slots[k],g.slots[k+1])); return out; };
   // a regiment and the commanders and medics standing inside it are placed together
-  const preO=new Set(); if(pre) for(const g of pre) for(let k=0;k<g.slots.length;k+=3){ const p=localToWorld(g,g.slots[k],g.slots[k+1]); occ.add(key(p[0],p[1])); preO.add(key(p[0],p[1])); }
-  const nearPre=(x,z)=>{ if(!preO.size) return false; const X=Math.round(x), Z=Math.round(z); for(let a=-1;a<=1;a++) for(let b=-1;b<=1;b++) if(preO.has((X+a)*4096+Z+b)) return true; return false; };
   const clusters=groups.filter(g=>!g.embedOf).map(g=>[g,...groups.filter(e=>e.embedOf===g)]);
   const bad=[];
-  for(const cl of clusters){ const P=cl.map(pts); if(P.every(L=>L.every(p=>ok(p[0],p[1])&&!nearPre(p[0],p[1])))) P.forEach(L=>L.forEach(p=>occ.add(key(p[0],p[1])))); else bad.push([cl,P]); }
+  for(const cl of clusters){ const P=cl.map(pts); if(P.every(L=>L.every(p=>ok(p[0],p[1])))) P.forEach(L=>L.forEach(p=>occ.add(key(p[0],p[1])))); else bad.push([cl,P]); }
   if(!bad.length) return groups;
   const shifts=[]; for(let b=0;b<=60;b+=2) for(let l=0;l<=90;l+=3) for(const s of l?[1,-1]:[1]) shifts.push([-dir*b,l*s,b+l*0.8]); shifts.sort((a,b)=>a[2]-b[2]);
   for(const [cl,P] of bad){
@@ -613,199 +611,6 @@ function placeGroups(groups,T,zone,dir,pre){
         if(found){ occ.add(key(found[0],found[1])); const [lx,lz]=worldToLocal(g,found[0],found[1]); keep.push(lx,lz,0); } }
       g.slots=keep; }); }
   return groups.filter(g=>g.slots.length);
-}
-/* ---------- blocks ---------- */
-// The army is raised, fielded and selected in blocks. Each kind of block has a fixed size, a fixed
-// mix of soldiers and a fixed shape. A slot lists the soldiers it wants in order of preference
-// ('spear|sword' means spearmen, or swordsmen until spearmen are researched); each one is fielded
-// at the newest tier of its upgrade line.
-const BLOCKS=[
- {id:'line',name:'Line regiment',form:'ranks',size:100,req:[],orders:'advance',
-  comp:[[20,'shield|sword'],[20,'spear|sword'],[30,'sword'],[26,'archer'],[1,'cmdr|sword'],[3,'medic|sword']],
-  desc:'A bit of everything in ranks: shields and spears in front, swords behind, archers at the back. Advances.'},
- {id:'square',name:'Square',form:'square',size:200,req:['spear'],orders:'hold',
-  comp:[[70,'spear'],[50,'shield|spear'],[20,'sword'],[50,'archer'],[2,'ballista|cata|archer'],[2,'cmdr|spear'],[6,'medic|spear']],
-  desc:'A hollow square of spears and shields facing out on every side, with archers, two light guns and officers inside. Holds; horse cannot break it.'},
- {id:'shieldwall',name:'Shield wall',form:'shieldwall',size:150,req:['shield'],orders:'hold',
-  comp:[[70,'shield'],[40,'spear|shield'],[34,'archer'],[1,'cmdr|shield'],[5,'medic|shield']],
-  desc:'Shields in front, spears behind them, archers at the back. Stands and lets the enemy come.'},
- {id:'wedge',name:'Wedge',form:'wedge',size:100,req:['bers'],orders:'charge',
-  comp:[[40,'bers'],[45,'sword'],[10,'shield|sword'],[2,'cmdr|sword'],[3,'medic|sword']],
-  desc:'Berserkers at the point with swords widening behind. Charges the enemy line to break it.'},
- {id:'column',name:'Storm column',form:'column',size:120,req:[],orders:'advance',
-  comp:[[60,'sword'],[25,'bers|sword'],[25,'shield|sword'],[2,'cmdr|sword'],[8,'medic|sword']],
-  desc:'A narrow, deep column of foot. Drop one in front of each gate to storm a fortress.'},
- {id:'missile',name:'Missile line',form:'line',size:80,req:[],orders:'hold',
-  comp:[[76,'archer'],[1,'cmdr|archer'],[3,'medic|archer']],
-  desc:'Archers (later crossbowmen and musketeers) in a long line, shooting from where they stand.'},
- {id:'battery',name:'Gun battery',form:'ranks',size:30,req:['cata'],orders:'hold',
-  comp:[[3,'cata'],[3,'ballista|cata'],[16,'spear|sword'],[8,'eng|spear|sword']],
-  desc:'Six siege engines with a guard of spears and a team of engineers who stake the ground in front.'},
- {id:'guard',name:'Champions',form:'ranks',size:40,req:['elite'],orders:'charge',
-  comp:[[36,'elite'],[2,'cmdr|elite'],[2,'medic|elite']],
-  desc:'A small company of champions with their officers. Charges into the thick of the fighting.'},
- {id:'horse',name:'Cavalry',cav:1,size:50,req:['lcav'],orders:'flank',
-  comp:[[50,'lcav']],
-  desc:'A squadron of horse. Rides round the enemy flank to hit them from behind.'},
-];
-const BLOCK_BY={}; BLOCKS.forEach(b=>BLOCK_BY[b.id]=b);
-const blockN=B=>B.comp.reduce((a,c)=>a+c[0],0);
-// take n soldiers from the pool, shared out in proportion to pool size × weight
-function fillPick(out,pool,n,w){
-  const fill=x=>{ let s=0; for(let i=0;i<NT;i++) if(w[i]>0) s+=Math.min(pool[i]-out[i],x*pool[i]*w[i]); return s; };
-  let avail=0; for(let i=0;i<NT;i++) if(w[i]>0) avail+=pool[i]-out[i];
-  n=Math.min(n,avail); if(n<=0) return 0;
-  let lo=0, hi=1; while(fill(hi)<n && hi<1e9) hi*=2; for(let k=0;k<40;k++){ const m=(lo+hi)/2; if(fill(m)<n) lo=m; else hi=m; }
-  const ex=new Array(NT).fill(0); let got=0;
-  for(let i=0;i<NT;i++) if(w[i]>0){ ex[i]=Math.min(pool[i]-out[i],hi*pool[i]*w[i]); const f=Math.floor(ex[i]); out[i]+=f; got+=f; }
-  const ord=[]; for(let i=0;i<NT;i++) if(w[i]>0&&out[i]<pool[i]) ord.push([ex[i]-Math.floor(ex[i]),i]); ord.sort((a,b)=>b[0]-a[0]);
-  for(let j=0;got<n&&j<ord.length;j++){ out[ord[j][1]]++; got++; }
-  return got;
-}
-// the soldiers a formation takes from a reserve pool: each slot is filled from its preferred units
-// (any tier of their upgrade line, newest first), then the fallbacks; short slots leave the formation
-// smaller. At most `room` soldiers in all.
-function fillBlock(B,pool,room){
-  const out=new Array(NT).fill(0), cand=id=>{ const L=LINES.find(l=>l.includes(id)); return (L?L.slice().reverse():[id]).map(x=>UID[x]); };
-  for(const [n,pref] of B.comp){ let need=n;
-    for(const id of pref.split('|')){ for(const t of cand(id)){ const k=Math.min(need,pool[t]-out[t]); if(k>0){ out[t]+=k; need-=k; } if(!need) break; } if(!need) break; }
-    // still short: any other foot (or missile troops, horse, guns) of the same class in reserve
-    const cls=UNITS[UID[pref.split('|')[0]]].cls;
-    if(need&&cls!=='sup') for(let t=0;t<NT&&need;t++) if(UNITS[t].cls===cls&&t!==UID.elite){ const k=Math.min(need,pool[t]-out[t]); if(k>0){ out[t]+=k; need-=k; } } }
-  // a battery without guns, or horse without horses, is not that formation at all
-  if(B.id==='battery'&&!UNITS.some((u,i)=>u.cls==='sie'&&out[i])) out.fill(0);
-  if(B.id==='missile'&&!UNITS.some((u,i)=>u.cls==='rng'&&out[i])) out.fill(0);
-  if(B.id==='guard'&&!out[UID.elite]) out.fill(0);
-  const tot=out.reduce((a,b)=>a+b,0);
-  if(tot>room){ const full=out.slice(), f=room/tot; let left=room; for(let i=0;i<NT;i++){ out[i]=Math.floor(full[i]*f); left-=out[i]; } for(let i=0;left>0&&i<NT;i++) if(out[i]<full[i]){ out[i]++; left--; } }
-  return out;
-}
-function groupsExtent(gs){ let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
-  for(const g of gs) for(let k=0;k<g.slots.length;k+=3){ const p=localToWorld(g,g.slots[k],g.slots[k+1]); if(p[0]<x0)x0=p[0]; if(p[0]>x1)x1=p[0]; if(p[1]<z0)z0=p[1]; if(p[1]>z1)z1=p[1]; }
-  return {x0,x1,z0,z1}; }
-// mark regiments as one block, so they are selected, moved and given orders together
-const tagBlock=(gs,bk,bn,kind)=>{ for(const g of gs){ g.bk=bk; g.bn=bn; g.bkind=kind||(bn==='Line regiment'?'line':bn==='Storm column'?'column':'horse'); } return gs; };
-// horse in an Auto army: one block per wing (or one reserve block behind)
-function tagHorse(gs,zc,first){ const h=gs.filter(g=>UNITS[g.type].cls==='cav'); if(!h.length) return;
-  if(h.some(g=>g.rear)) tagBlock(h,first,'Horse reserve'); else for(const g of h) tagBlock([g],g.cz<zc?first:first+1,g.cz<zc?'Left horse':'Right horse'); }
-const shiftGroups=(gs,dx,dz)=>{ for(const g of gs){ g.cx+=dx; g.cz+=dz; } };
-// lay out one block centred on `at`, keeping clear of the regiments already standing in `pre`
-// one block's regiments, centred on the origin, facing the enemy, with the block's orders
-function buildBlock(team,counts,T,B){
-  const face=team===0?0:Math.PI; let gs=[];
-  if(B.cav){ let z=0; const parts=UNITS.map((u,t)=>t).filter(t=>counts[t]>0);
-    for(const t of parts){ const n=counts[t], sp=UNITS[t].sp, cols=clamp(Math.ceil(Math.sqrt(n*2)),2,16), rows=Math.ceil(n/cols);
-      gs.push({team,type:t,order:'flank',cx:0,cz:z+cols*sp/2,a:face,slots:fmRect(cols,rows,sp,n),k:0}); z+=cols*sp+2; } }
-  else gs=layoutFormation(team,counts,T,B.form,null,{noPlace:1,noCav:1,zc:0,Wmax:clamp(Math.sqrt(counts.reduce((a,b)=>a+b,0))*3.2,24,90)});
-  if(!gs.length) return gs;
-  if(B.orders) for(const g of gs){ const c=UNITS[g.type].cls; g.order=g.type===UID.eng?'hold':c==='sup'?'advance':B.orders==='charge'&&c==='rng'?'advance':B.orders; }
-  if(B.id==='battery') for(const g of gs) if(UNITS[g.type].cls!=='sie'&&g.type!==UID.eng) g.order='hold';
-  const e=groupsExtent(gs); shiftGroups(gs,-(e.x0+e.x1)/2,-(e.z0+e.z1)/2);
-  for(const g of gs){ g.bk=1; g.bn=B.name; g.bkind=B.id; }
-  return gs;
-}
-// lay out one block centred on `at`, keeping clear of the regiments already standing in `pre`
-function layoutBlock(team,counts,T,B,at,pre,zoneArg){
-  const dir=team===0?1:-1, gs=buildBlock(team,counts,T,B); if(!gs.length) return gs;
-  shiftGroups(gs,at[0],at[1]);
-  // nudge the whole block to the nearest spot where it fits before splitting it up
-  const zone=zoneArg||ZONES[team], occ=new Set(), key=(x,z)=>Math.round(x)*4096+Math.round(z);
-  if(pre) for(const g of pre) for(let k=0;k<g.slots.length;k+=3){ const p=localToWorld(g,g.slots[k],g.slots[k+1]); const X=Math.round(p[0]),Z=Math.round(p[1]); for(let a=-1;a<=1;a++) for(let b=-1;b<=1;b++) occ.add((X+a)*4096+Z+b); }
-  const P=[]; for(const g of gs) for(let k=0;k<g.slots.length;k+=3) P.push(localToWorld(g,g.slots[k],g.slots[k+1]));
-  const fits=(dx,dz)=>{ for(const p of P){ const x=p[0]+dx, z=p[1]+dz; if(!passAtT(T,x,z)||x<zone[0]||x>zone[1]||z<=Z0+2||z>=Z1-2||occ.has(key(x,z))) return false; } return true; };
-  let best=null;
-  for(let r=0;r<=40&&!best;r+=2){ const ring=r?[]:[[0,0]]; if(r) for(let a=0;a<16;a++) ring.push([Math.cos(a*Math.PI/8)*r,Math.sin(a*Math.PI/8)*r]); for(const [dx,dz] of ring) if(fits(dx,dz)){ best=[dx,dz]; break; } }
-  if(best) shiftGroups(gs,best[0],best[1]);
-  return placeGroups(gs,T,zone,dir,pre);
-}
-// The Auto army from a list of blocks: the first row of foot blocks side by side across the open
-// ground, missile lines and batteries close behind it, further rows of foot as a reserve, horse on the
-// wings (or behind). On a fortress map the foot blocks queue up in front of the gates.
-function layoutBlocks(team,list,T,opt={}){
-  const dir=team===0?1:-1, front=(team===0?-34:34)-dir*(opt.back||0);
-  const probeX=front-dir*6; let bestA=-80,bestB=80,runA=null,bestLen=0;
-  for(let z=Z0+4; z<=Z1-4; z+=2){ const ok=passAtT(T,probeX,z)&&passAtT(T,probeX-dir*20,z); if(ok){ if(runA===null) runA=z; if(z-runA>bestLen){ bestLen=z-runA; bestA=runA; bestB=z; } } else runA=null; }
-  const zc=(bestA+bestB)/2, Wmax=Math.max(30,(bestB-bestA)*0.92), gap=4;
-  const built=list.map((b,k)=>{ const gs=buildBlock(team,b.counts,T,b.B); for(const g of gs) g.bk=k+1; const e=groupsExtent(gs); return {B:b.B,gs,w:e.z1-e.z0,d:e.x1-e.x0}; }).filter(b=>b.gs.length);
-  const FRONT=['shieldwall','square','line','wedge','guard','column'];
-  const foot=built.filter(b=>FRONT.includes(b.B.id)).sort((a,b)=>FRONT.indexOf(a.B.id)-FRONT.indexOf(b.B.id));
-  const support=built.filter(b=>b.B.id==='missile'||b.B.id==='battery'), horse=built.filter(b=>b.B.cav);
-  const put=(b,dd,z)=>shiftGroups(b.gs,front-dir*(dd+b.d/2),z);
-  const rows=bl=>{ const out=[]; let cur=[], w=0; for(const b of bl){ if(cur.length&&w+gap+b.w>Wmax){ out.push(cur); cur=[]; w=0; } w+=(cur.length?gap:0)+b.w; cur.push(b); } if(cur.length) out.push(cur); return out; };
-  const row=(bl,dd)=>{ const tot=bl.reduce((a,b)=>a+b.w,0)+gap*(bl.length-1); let z=zc-tot/2, md=0; for(const b of bl){ put(b,dd,z+b.w/2); z+=b.w+gap; md=Math.max(md,b.d); } return [tot,md]; };
-  let depth=0, span=20;
-  if(opt.gates&&opt.gates.length&&foot.length){
-    // two blocks queue at each gate; the rest of the foot forms up in rows behind the missile troops and guns
-    const ng=opt.gates.length, atGate=foot.slice(0,ng*2), rest=foot.slice(ng*2), q=opt.gates.map(()=>0);
-    atGate.forEach((b,k)=>{ const gi=k%ng; put(b,q[gi],clamp(opt.gates[gi],Z0+b.w/2+4,Z1-b.w/2-4)); q[gi]+=b.d+3; });
-    depth=Math.max(...q); foot.length=0; foot.push(...rest); span=Math.max(...opt.gates)-Math.min(...opt.gates)+30;
-    for(const r of rows(support)){ const [, md]=row(r,depth); depth+=md+3; }
-    for(const r of rows(foot)){ const [, md]=row(r,depth); depth+=md+3; }
-  } else {
-    const fr=rows(foot);
-    if(fr.length){ const [tot,md]=row(fr[0],0); span=tot; depth=md+3; }
-    for(const r of rows(support)){ const [tot,md]=row(r,depth); span=Math.max(span,tot); depth+=md+3; }
-    for(const r of fr.slice(1)){ const [tot,md]=row(r,depth); depth+=md+3; }
-  }
-  if(horse.length){
-    if(opt.cav==='rear'){ depth+=2; for(const r of rows(horse)){ const [, md]=row(r,depth); depth+=md+3; } }
-    else { const wz=[zc-span/2-3,zc+span/2+3]; horse.forEach((b,k)=>{ const s=k%2; put(b,0,wz[s]+(s?1:-1)*b.w/2); wz[s]+=(s?1:-1)*(b.w+gap); }); }
-  }
-  const zone=opt.zone||ZONES[team]; packBlocks(built,T,zone,dir);
-  return placeGroups(built.flatMap(b=>b.gs),T,zone,dir);
-}
-// Move each block, in turn, to the nearest spot to where it was planned that is open ground inside the
-// zone and clear of the blocks already placed (with a small gap), stepping back before stepping forward.
-// Uses a 1 m grid of blocked cells and a summed-area table, so each try is a constant-time rectangle check.
-let PACK_OFF=null, PACK_MISS=0;
-function packOffsets(){ if(PACK_OFF) return PACK_OFF; const L=[]; for(let a=-200;a<=200;a+=2) for(let b=-300;b<=300;b+=2) L.push([a,b,(a<0?-a*0.6:a*2.5)+Math.abs(b)*0.5]);
-  L.sort((p,q)=>p[2]-q[2]); PACK_OFF=new Int16Array(L.length*2); L.forEach((p,i)=>{ PACK_OFF[i*2]=p[0]; PACK_OFF[i*2+1]=p[1]; }); return PACK_OFF; }
-function packBlocks(built,T,zone,dir){
-  const gx0=Math.floor(zone[0]), gz0=Math.floor(Z0+2), GW=Math.ceil(zone[1])-gx0+1, GH=Math.ceil(Z1-2)-gz0+1;
-  const bad=new Uint8Array(GW*GH); for(let j=0;j<GH;j++) for(let i=0;i<GW;i++) if(!passAtT(T,gx0+i+0.5,gz0+j+0.5)) bad[j*GW+i]=1;
-  const S=new Int32Array((GW+1)*(GH+1));
-  const build=()=>{ for(let j=0;j<GH;j++){ let row=0; for(let i=0;i<GW;i++){ row+=bad[j*GW+i]; S[(j+1)*(GW+1)+i+1]=S[j*(GW+1)+i+1]+row; } } };
-  const sum=(i0,j0,i1,j1)=>S[j1*(GW+1)+i1]-S[j0*(GW+1)+i1]-S[j1*(GW+1)+i0]+S[j0*(GW+1)+i0];
-  build(); const O=packOffsets();
-  // place one set of regiments as a unit; false when there is no room for it anywhere
-  const fit=(gs,m)=>{ let e=groupsExtent(gs); if(!(e.x1>=e.x0)) return true;
-    // start from inside the zone, however far back or out to the side it was planned
-    const cx=clamp(0,zone[0]+2-e.x0,Math.max(zone[0]+2-e.x0,zone[1]-2-e.x1)), cz=clamp(0,Z0+3-e.z0,Math.max(Z0+3-e.z0,Z1-3-e.z1)); if(cx||cz){ shiftGroups(gs,cx,cz); e=groupsExtent(gs); }
-    const w=Math.ceil(e.x1-e.x0)+1, h=Math.ceil(e.z1-e.z0)+1;
-    for(let q=0;q<O.length;q+=2){ const dx=dir*O[q], dz=O[q+1];
-      const i0=Math.floor(e.x0+dx)-gx0-m, j0=Math.floor(e.z0+dz)-gz0-m, i1=i0+w+2*m, j1=j0+h+2*m;
-      if(i0<0||j0<0||i1>GW||j1>GH||sum(i0,j0,i1,j1)) continue;
-      shiftGroups(gs,dx,dz); for(let j=j0;j<j1;j++) for(let i=i0;i<i1;i++) bad[j*GW+i]=1; build(); return true; }
-    return false; };
-  const miss=built.filter(b=>!fit(b.gs,1));
-  // no room for a whole block: place its regiments one by one (officers stay with the regiment they stand in)
-  for(const b of miss){ PACK_MISS++; for(const g of b.gs) if(!g.embedOf) fit([g,...b.gs.filter(e=>e.embedOf===g)],0); }
-}
-// share each type out across n divisions
-function splitCounts(counts,n){ const parts=Array.from({length:n},()=>new Array(NT).fill(0));
-  counts.forEach((c,i)=>{ for(let d=0;d<n;d++) parts[d][i]=Math.floor(c/n); for(let r=0;r<c%n;r++) parts[(i+r)%n][i]++; }); return parts; }
-// the Auto army: one line regiment per thousand or so foot, side by side with gaps, horse on the wings
-// (or behind), assault columns on the gates of a fortress
-function layoutAuto(team,counts,T,opt={}){
-  if(opt.gates&&opt.gates.length){ const gs=layoutFormation(team,counts,T,'assault',null,Object.assign({},opt,{cav:'rear'})), gz=opt.gates;
-    for(const g of gs) if(UNITS[g.type].cls!=='cav'){ let bi=0; gz.forEach((z,i)=>{ if(Math.abs(z-g.cz)<Math.abs(gz[bi]-g.cz)) bi=i; }); tagBlock([g],1+bi,'Storm column'); }
-    tagHorse(gs,0,9); return gs; }
-  const dir=team===0?1:-1, front=(team===0?-34:34)-dir*(opt.back||0);
-  const foot=counts.map((n,i)=>UNITS[i].cls==='cav'?0:n), horse=counts.map((n,i)=>UNITS[i].cls==='cav'?n:0);
-  const nf=foot.reduce((a,b)=>a+b,0), nd=clamp(Math.round(nf/(opt.per||1000)),1,6);
-  if(nd<=1){ const gs=layoutFormation(team,counts,T,'ranks',null,opt), ft=gs.filter(g=>UNITS[g.type].cls!=='cav'); tagBlock(ft,1,'Line regiment');
-    tagHorse(gs,ft.length?ft.reduce((a,g)=>a+g.cz,0)/ft.length:0,2); return gs; }
-  // the widest open run of ground near the front, as layoutFormation finds it
-  const probeX=front-dir*6; let bestA=-80,bestB=80,runA=null,bestLen=0;
-  for(let z=Z0+4; z<=Z1-4; z+=2){ const ok=passAtT(T,probeX,z)&&passAtT(T,probeX-dir*20,z); if(ok){ if(runA===null) runA=z; if(z-runA>bestLen){ bestLen=z-runA; bestA=runA; bestB=z; } } else runA=null; }
-  const zc=(bestA+bestB)/2, Wmax=Math.max(20,(bestB-bestA)*0.9), gap=8, wEach=Math.max(20,(Wmax-gap*(nd-1))/nd);
-  const subs=splitCounts(foot,nd).map(c=>layoutFormation(team,c,T,'ranks',null,Object.assign({},opt,{noPlace:1,noCav:1,zc:0,Wmax:wEach})));
-  const ext=subs.map(groupsExtent), total=ext.reduce((a,e)=>a+e.z1-e.z0,0)+gap*(nd-1);
-  let z=zc-total/2, back=0;
-  subs.forEach((gs,d)=>{ const e=ext[d]; shiftGroups(gs,0,z-e.z0); tagBlock(gs,d+1,'Line regiment'); z+=e.z1-e.z0+gap; back=Math.max(back,dir>0?front-e.x0:e.x1-front); });
-  let all=subs.flat();
-  if(horse.some(n=>n>0)){ const hg=layoutFormation(team,horse,T,'ranks',null,Object.assign({},opt,{noPlace:1,zc,span:total,depth0:back})); tagHorse(hg,zc,nd+1); all=all.concat(hg); }
-  return placeGroups(all,T,ZONES[team],dir);
 }
 function defaultOrder(type){ const c=UNITS[type].cls; return c==='cav'?'flank':'advance'; }
 function passAtT(T,x,z){ if(x<X0||x>=X1||z<Z0||z>=Z1) return false; const i=((x-X0)/TC)|0, j=((z-Z0)/TC)|0; return PASSK[T.k[j*TW+i]]===1; }

@@ -155,7 +155,7 @@ function initUnit(i,team,type,x,z,a,gi,sx,sz,sa){
 function makeBattleGroup(dg){
   let rad=2; for(let k=0;k<dg.slots.length;k+=3) rad=Math.max(rad,Math.hypot(dg.slots[k],dg.slots[k+1]));
   const o=Math.max(0,ORDER_IDS.indexOf(dg.order));
-  return {bk:dg.bk||0,bn:dg.bn||'',bkind:dg.bkind||'',team:dg.team,type:dg.type,order:o,ax:dg.cx,az:dg.cz,a:dg.a,ca:Math.cos(dg.a),sa:Math.sin(dg.a),rad,n0:dg.slots.length/3,
+  return {team:dg.team,type:dg.type,order:o,ax:dg.cx,az:dg.cz,a:dg.a,ca:Math.cos(dg.a),sa:Math.sin(dg.a),rad,n0:dg.slots.length/3,
     cnt:dg.slots.length/3,alive:dg.slots.length/3,sx:dg.cx*dg.slots.length/3,sz:dg.cz*dg.slots.length/3,slx:0,slz:0,cx:dg.cx,cz:dg.cz,err:0,fcnt:0,eng:0,ned:1e9,nex:0,nez:0,tg:null,phase:0,side:1,tmr:0,spdNow:0,mdx:Math.cos(dg.a),mdz:Math.sin(dg.a),retreat:false};
 }
 // append deploy-format groups to a running (or fresh) battle
@@ -193,47 +193,6 @@ function resetBattle(){
 function setAbilities(team,ab){ B.shieldBlock[team]=ab.shieldwall?.7:.5; B.adjBlock[team]=ab.shieldwall?.45:.3; B.shieldArm[team]=ab.shieldwall?5:3; }
 
 // remove old corpses and escaped units to make room (endless / survival)
-// Weakened blocks of the same kind merge during a battle. When two blocks of one kind are both under
-// half strength, the weaker one's soldiers join the other: each regiment folds into the matching regiment
-// of the stronger block and the ranks close up; anything without a match (guns, officers, medics) joins
-// that block as a regiment of its own. The merged block keeps the stronger block's size, so it is back near
-// full strength.
-function mergeBlocks(){
-  const blocks=new Map();
-  G.forEach((g,gi)=>{ if(!g.bk||!g.bkind) return; const key=g.team+':'+g.bk; let b=blocks.get(key);
-    if(!b){ b={bk:g.bk,team:g.team,kind:g.bkind,bn:g.bn,gis:[],alive:0,n0:0,sx:0,sz:0}; blocks.set(key,b); }
-    b.gis.push(gi); b.alive+=g.cnt; b.n0+=g.n0; b.sx+=g.cx*g.cnt; b.sz+=g.cz*g.cnt; });
-  const weak=[...blocks.values()].filter(b=>b.alive>0&&b.alive<b.n0*0.5).sort((a,b)=>a.alive-b.alive);
-  const done=new Set(), merged=[];
-  for(let d of weak){ if(done.has(d)) continue;
-    let r=null, bd=1e18; const dx=d.sx/d.alive, dz=d.sz/d.alive;
-    for(const o of weak){ if(o===d||done.has(o)||o.team!==d.team||o.kind!==d.kind) continue; const dd=(o.sx/o.alive-dx)**2+(o.sz/o.alive-dz)**2; if(dd<bd){ bd=dd; r=o; } }
-    if(!r) continue;
-    if(r.alive<d.alive){ const t=r; r=d; d=t; }   // the stronger block takes the weaker one in
-    done.add(r); done.add(d); merged.push([r.team,r.bn]);
-    const ord=G[r.gis.find(k=>{ const c=UNITS[G[k].type].cls; return c!=='sup'&&c!=='sie'; })??r.gis[0]].order;
-    for(const gi of d.gis){ const g=G[gi]; if(g.cnt<=0) continue; const c=UNITS[g.type].cls;
-      const tgi=c==='sup'||c==='sie'?-1:r.gis.find(k=>G[k].type===g.type&&G[k].cnt>0)??-1;
-      if(tgi<0){ g.bk=r.bk; g.bn=r.bn; if(c!=='sup'&&c!=='sie') g.order=ord; continue; }
-      for(let i=0;i<N;i++) if(GR[i]===gi&&SS[i]===1) GR[i]=tgi;
-      g.n0=0; reformGroup(tgi); }
-  }
-  return merged;
-}
-// close up a regiment's ranks around its anchor: same frontage, front rank where it was, everyone to the nearest place
-function reformGroup(gi){
-  const g=G[gi], sp=UNITS[g.type].sp, mem=[]; let x0=1e9,x1=-1e9,zf=-1e9;
-  for(let i=0;i<N;i++) if(GR[i]===gi&&SS[i]===1){ mem.push(i); if(SX[i]<x0)x0=SX[i]; if(SX[i]>x1)x1=SX[i]; if(SZ[i]>zf)zf=SZ[i]; }
-  const n=mem.length; if(!n) return;
-  const cols=clamp(Math.round((x1-x0)/sp)+1,1,Math.max(1,n)), rows=Math.ceil(n/cols), sl=fmRect(Math.min(cols,n),rows,sp,n);
-  let top=-1e9; for(let k=1;k<sl.length;k+=3) top=Math.max(top,sl[k]); const dz=(zf>-1e9?zf:0)-top;
-  const slots=[]; for(let k=0;k<sl.length;k+=3) slots.push([sl[k],sl[k+1]+dz]);
-  // where each soldier stands now, in the regiment's frame
-  const loc=mem.map(i=>{ const ex=PX[i]-g.ax, ez=PZ[i]-g.az; return [i, g.sa*ex-g.ca*ez, g.ca*ex+g.sa*ez]; });
-  loc.sort((a,b)=>b[2]-a[2]||a[1]-b[1]); slots.sort((a,b)=>b[1]-a[1]||a[0]-b[0]);
-  let rad=2; loc.forEach((p,k)=>{ const s=slots[k]; SX[p[0]]=s[0]; SZ[p[0]]=s[1]; rad=Math.max(rad,Math.hypot(s[0],s[1])); });
-  g.rad=rad; g.n0=Math.max(g.n0,n); g.cnt=n; g.alive=n;
-}
 function compact(){
   const map=new Int32Array(N).fill(-1); let w=0;
   const keepCorpses = N < MAXU*0.55;
