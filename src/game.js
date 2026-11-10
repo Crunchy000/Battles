@@ -867,7 +867,7 @@ function moveSingle(p){
 function endSingle(o){
   const g=GST; GST=null; if(!g) return;
   const moved=Math.hypot(o.p[0]-o.start[0],o.p[1]-o.start[1]), dt=performance.now()-o.t;
-  if(g.kind==='tool') toolEnd(); else if(g.kind==='terrain') terrainEnd(); else if(g.kind==='move') moveEnd(g.gi);
+  if(g.kind==='tool') toolEnd(); else if(g.kind==='terrain') terrainEnd(); else if(g.kind==='move'){ moveEnd(g.gi); if(moved<6&&dt<450&&isDoubleTap(o.p)){ if(D.undo.length) D.undo.pop(); haltOrCharge(o.p); } }
   else if(g.kind==='pan' && moved<8 && dt<450) tap(o.p);
   else if(g.kind==='box'){ if(moved<6) boxTap(o.p,g.add); else boxSelect(g.a,g.b,g.add); }
 }
@@ -881,10 +881,29 @@ function movePinch(){
   if(GST.W0){ const W=worldAtPlane(m[0],m[1],GST.h); if(W){ CAM.g.tx+=GST.W0[0]-W[0]; CAM.g.tz+=GST.W0[1]-W[1]; camClamp(CAM.g); snapCam(); } }
 }
 function zoomAt(p,f){ const W0=worldAtPlane(p[0],p[1],CAM.ty); CAM.g.dist=clamp(CAM.g.dist*f,6,CAM_MAX); CAM.follow=-1; snapCam(); if(W0){ const W=worldAtPlane(p[0],p[1],CAM.ty); if(W){ CAM.g.tx+=W0[0]-W[0]; CAM.g.tz+=W0[1]-W[1]; camClamp(CAM.g); snapCam(); } } }
-function boxTap(p,add){ const W=worldAt(p[0],p[1]);
+// Double tap a regiment to halt it, or (if it is already halted or doing anything but charging) to send it
+// charging; double tap again to halt it. When the regiment is part of the selection, the whole selection
+// gets the order. Commanders and medics keep marching with their regiments.
+let LAST_TAP={t:0,p:[0,0]};
+function isDoubleTap(p){ const now=performance.now(), dbl=now-LAST_TAP.t<400&&Math.hypot(p[0]-LAST_TAP.p[0],p[1]-LAST_TAP.p[1])<40; LAST_TAP=dbl?{t:0,p:[0,0]}:{t:now,p}; return dbl; }
+function haltOrCharge(p){
+  const W=worldAt(p[0],p[1]); if(!W) return false; const sup=t=>UNITS[t].cls==='sup';
+  if(GAME.phase==='battle'){ const i=pickUnit(W,2.4,battleTeams()); if(i<0) return false; const gi=GR[i];
+    let list=BSEL.has(gi)?[...BSEL]:[gi]; if(!BSEL.has(gi)) setBattleSel([gi]);
+    if(list.some(k=>G[k]&&!sup(G[k].type))) list=list.filter(k=>G[k]&&!sup(G[k].type));
+    const charge=!list.every(k=>G[k].order===O_CHARGE); for(const k of list) setBattleOrder(k,charge?O_CHARGE:O_HOLD);
+    toast(charge?'Charge!':'Halt',1100); renderGroupPanel(); return true; }
+  if(GAME.phase==='deploy'){ const gi=pickGroup(W); if(gi<0) return false; const g=D.groups[gi];
+    let list=D.selObj.has(g)?selGroups():[g]; if(!D.selObj.has(g)) selectGroup(gi);
+    if(list.some(x=>!sup(x.type))) list=list.filter(x=>!sup(x.type));
+    const charge=!list.every(x=>x.order==='charge'); for(const x of list) x.order=charge?'charge':'hold';
+    toast(charge?'Will charge':'Will hold',1100); renderGroupPanel(); return true; }
+  return false; }
+function boxTap(p,add){ if(isDoubleTap(p)&&haltOrCharge(p)) return; const W=worldAt(p[0],p[1]);
   if(GAME.phase==='deploy'){ if(!add) selectGroup(-1); return; }
   const i=W?pickUnit(W,2.4,battleTeams()):-1; setBattleSel(i>=0?[GR[i]]:[],add); }
 function tap(p){
+  if(isDoubleTap(p)&&haltOrCharge(p)) return;
   const W=worldAt(p[0],p[1]); if(!W) return;
   if(GAME.phase==='deploy'){ selectGroup(pickGroup(W)); return; }
   inspectUnit(pickUnit(W,2.4,null));
@@ -930,7 +949,7 @@ function showWelcome(){
     <button class="btn" id="wMore">Endless & Survival</button>
     <button class="btn ghost" id="wWatch">Keep watching</button>
   </div>
-  <div class="hint">Drag to pan · scroll or pinch to zoom · right-drag or two-finger twist to turn · WASD and Q/E fly the camera · Space pauses · 1, 2, 3 set 1×, 3×, 9× speed · T opens the tech tree · tap a soldier to inspect it</div>`,s=>{
+  <div class="hint">Drag to pan · scroll or pinch to zoom · right-drag or two-finger twist to turn · WASD and Q/E fly the camera · Space pauses · 1, 2, 3 set 1×, 3×, 9× speed · T opens the tech tree · tap a soldier to inspect it · double tap a regiment to halt it or send it charging</div>`,s=>{
     $('#wX').onclick=closeModal; $('#wWatch').onclick=closeModal;
     $('#wCamp').onclick=()=>campaignDone()?showBattles('campaign'):openCampaign(PROG.level);
     $('#wSand').onclick=()=>showBattles('sandbox'); $('#wCustom').onclick=()=>showBattles('custom'); $('#wMore').onclick=()=>showBattles('endless');

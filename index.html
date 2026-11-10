@@ -810,22 +810,24 @@ function formationOrder(formId){ const F=FORM_BY[formId]||FORMATIONS[0];
   return BAND_ORDER.slice().sort((a,b)=>(F.roles.indexOf(ROLE[a])-F.roles.indexOf(ROLE[b]))||(BAND_ORDER.indexOf(a)-BAND_ORDER.indexOf(b))); }
 function layoutFormation(team,counts,T,form,order,opt={}){
   const F=FORM_BY[form]||FORMATIONS[0];
+  // a big army forms several squares rather than one huge one
+  if(F.shape==='ring'&&!opt.single){ let nf=0; counts.forEach((n,i)=>{ if(UNITS[i].cls!=='cav') nf+=n; }); const nsq=clamp(Math.round(nf/SQUARE_SIZE),1,12); if(nsq>1) return layoutSquares(team,counts,T,F,order,opt,nsq); }
   const dir=team===0?1:-1, face=team===0?0:Math.PI;
   const front=(team===0?-34:34)-dir*(opt.back||0);
   // centre on the widest open run of ground near the front
   const probeX=front-dir*6; let bestA=-80,bestB=80,runA=null,bestLen=0;
   for(let z=Z0+4; z<=Z1-4; z+=2){ const ok=passAtT(T,probeX,z)&&passAtT(T,probeX-dir*20,z); if(ok){ if(runA===null) runA=z; if(z-runA>bestLen){ bestLen=z-runA; bestA=runA; bestB=z; } } else runA=null; }
-  const zc=(bestA+bestB)/2, Wmax=Math.max(20,(bestB-bestA)*0.9);
+  const zc=opt.zc!==undefined?opt.zc:(bestA+bestB)/2, Wmax=opt.Wmax||Math.max(20,(bestB-bestA)*0.9);
   const groups=[]; const mk=(t,cx,cz,slots,a)=>{ if(!slots.length) return null; const g={team,type:t,order:defaultOrder(t),cx,cz,a:a===undefined?face:a,slots,k:0}; groups.push(g); return g; };
   const has=t=>t!==undefined&&counts[t]>0;
   // combat bands in the requested order, then any present type the order left out
   let bands=(order&&order.length?order:formationOrder(F.id)).map(id=>UID[id]).filter(t=>has(t)&&(UNITS[t].cls==='inf'||UNITS[t].cls==='rng'));
   UNITS.forEach((u,t)=>{ if(has(t)&&(u.cls==='inf'||u.cls==='rng')&&!bands.includes(t)) bands.push(t); });
   const sup=['cmdr','medic'].map(id=>UID[id]).filter(has), eng=UID.eng;
-  const cav=UNITS.map((u,t)=>t).filter(t=>has(t)&&UNITS[t].cls==='cav'), sie=UNITS.map((u,t)=>t).filter(t=>has(t)&&UNITS[t].cls==='sie');
+  const cav=opt.noCav?[]:UNITS.map((u,t)=>t).filter(t=>has(t)&&UNITS[t].cls==='cav'), sie=UNITS.map((u,t)=>t).filter(t=>has(t)&&UNITS[t].cls==='sie');
   let area=0; for(const t of bands) area+=counts[t]*UNITS[t].sp**2;
   const W=clamp(Math.sqrt(Math.max(area,1)*(F.aspect||3.2)),18,Wmax);
-  let depth=0, span=W, supDone=bands.length>0;
+  let depth=opt.depth0||0, span=opt.span||W, supDone=bands.length>0;
   // one band of type t, `width` wide, centred on z, starting dd metres behind the front; split into blocks about 22 m wide
   const band=(t,n,width,z,dd,k)=>{ const sp=UNITS[t].sp, cols=Math.max(1,Math.min(n,Math.floor(width/sp))), rows=Math.ceil(n/cols);
     const parts=Math.max(1,Math.min(8,Math.round(cols*sp/22))); let left=n, c0=0;
@@ -909,8 +911,39 @@ function layoutFormation(team,counts,T,form,order,opt={}){
   // orders that come with the formation
   for(const g of groups){ const c=UNITS[g.type].cls, u=clamp((g.cz-zc)/(span/2),-1,1);
     g.order= g.type===eng?'hold' : c==='sup'?'advance' : c==='cav'?(g.rear&&F.reserve?'hold':'flank') : c==='sie'?(F.siege||'advance') : F.orders(ROLE[UNITS[g.type].id]||'melee',g.k|0,u); }
-  return placeGroups(groups,T,ZONES[team],dir);
+  return opt.noPlace?groups:placeGroups(groups,T,ZONES[team],dir);
 }
+// Several hollow squares for a big army, about SQUARE_SIZE foot each, every one with its share of each kind
+// of soldier. They stand in rows with wide lanes between them, alternate rows shifted half a square so
+// each square covers its neighbours' sides with fire (the chequer used against cavalry); horse waits behind.
+const SQUARE_SIZE=800;
+function layoutSquares(team,counts,T,F,order,opt,nsq){
+  const dir=team===0?1:-1, front=(team===0?-34:34)-dir*(opt.back||0);
+  const probeX=front-dir*6; let bestA=-80,bestB=80,runA=null,bestLen=0;
+  for(let z=Z0+4; z<=Z1-4; z+=2){ const ok=passAtT(T,probeX,z)&&passAtT(T,probeX-dir*20,z); if(ok){ if(runA===null) runA=z; if(z-runA>bestLen){ bestLen=z-runA; bestA=runA; bestB=z; } } else runA=null; }
+  const zc=(bestA+bestB)/2, Wmax=Math.max(40,(bestB-bestA)*0.95), gap=10;
+  const foot=counts.map((n,i)=>UNITS[i].cls==='cav'?0:n), horse=counts.map((n,i)=>UNITS[i].cls==='cav'?n:0);
+  const parts=Array.from({length:nsq},()=>new Array(NT).fill(0));
+  foot.forEach((c,i)=>{ for(let d=0;d<nsq;d++) parts[d][i]=Math.floor(c/nsq); for(let r=0;r<c%nsq;r++) parts[(i+r)%nsq][i]++; });
+  const sq=parts.map(c=>{ const gs=layoutFormation(team,c,T,F.id,order,Object.assign({},opt,{single:1,noPlace:1,noCav:1,zc:0})); return {gs,e:groupsExtent(gs)}; }).filter(q=>q.gs.length);
+  const w=Math.max(...sq.map(q=>q.e.z1-q.e.z0)), d=Math.max(...sq.map(q=>q.e.x1-q.e.x0));
+  const perRow=Math.max(1,Math.min(sq.length,Math.floor((Wmax+gap)/(w+gap))));
+  let back=0, span=0;
+  sq.forEach((q,k)=>{ const r=Math.floor(k/perRow), c=k%perRow, inRow=Math.min(perRow,sq.length-r*perRow);
+    const rowW=inRow*w+(inRow-1)*gap, rows=Math.ceil(sq.length/perRow), stag=rows>1?(r%2?1:-1)*(w+gap)/4:0;
+    const z=zc-rowW/2+c*(w+gap)+w/2+stag;
+    const x=front-dir*(r*(d+gap)+d/2);
+    shiftGroups(q.gs,x-(q.e.x0+q.e.x1)/2,z-(q.e.z0+q.e.z1)/2);
+    back=Math.max(back,r*(d+gap)+d); span=Math.max(span,rowW); });
+  let all=sq.flatMap(q=>q.gs);
+  if(horse.some(n=>n>0)){ const hg=layoutFormation(team,horse,T,'ranks',null,Object.assign({},opt,{noPlace:1,zc,span,depth0:back,cav:opt.cav||F.cav}));
+    if(F.reserve) for(const g of hg) if(g.rear) g.order='hold'; all=all.concat(hg); }
+  return placeGroups(all,T,ZONES[team],dir);
+}
+function groupsExtent(gs){ let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
+  for(const g of gs) for(let k=0;k<g.slots.length;k+=3){ const p=localToWorld(g,g.slots[k],g.slots[k+1]); if(p[0]<x0)x0=p[0]; if(p[0]>x1)x1=p[0]; if(p[1]<z0)z0=p[1]; if(p[1]>z1)z1=p[1]; }
+  return {x0,x1,z0,z1}; }
+const shiftGroups=(gs,dx,dz)=>{ for(const g of gs){ g.cx+=dx; g.cz+=dz; } };
 // Spread commanders and medics through the infantry and missile regiments. Each regiment gets a few
 // empty places scattered through its ranks (never the front rank); the officers and medics stand in
 // them as small groups sharing the regiment's anchor and facing, so they move and turn with it.
@@ -3291,7 +3324,7 @@ function moveSingle(p){
 function endSingle(o){
   const g=GST; GST=null; if(!g) return;
   const moved=Math.hypot(o.p[0]-o.start[0],o.p[1]-o.start[1]), dt=performance.now()-o.t;
-  if(g.kind==='tool') toolEnd(); else if(g.kind==='terrain') terrainEnd(); else if(g.kind==='move') moveEnd(g.gi);
+  if(g.kind==='tool') toolEnd(); else if(g.kind==='terrain') terrainEnd(); else if(g.kind==='move'){ moveEnd(g.gi); if(moved<6&&dt<450&&isDoubleTap(o.p)){ if(D.undo.length) D.undo.pop(); haltOrCharge(o.p); } }
   else if(g.kind==='pan' && moved<8 && dt<450) tap(o.p);
   else if(g.kind==='box'){ if(moved<6) boxTap(o.p,g.add); else boxSelect(g.a,g.b,g.add); }
 }
@@ -3305,10 +3338,29 @@ function movePinch(){
   if(GST.W0){ const W=worldAtPlane(m[0],m[1],GST.h); if(W){ CAM.g.tx+=GST.W0[0]-W[0]; CAM.g.tz+=GST.W0[1]-W[1]; camClamp(CAM.g); snapCam(); } }
 }
 function zoomAt(p,f){ const W0=worldAtPlane(p[0],p[1],CAM.ty); CAM.g.dist=clamp(CAM.g.dist*f,6,CAM_MAX); CAM.follow=-1; snapCam(); if(W0){ const W=worldAtPlane(p[0],p[1],CAM.ty); if(W){ CAM.g.tx+=W0[0]-W[0]; CAM.g.tz+=W0[1]-W[1]; camClamp(CAM.g); snapCam(); } } }
-function boxTap(p,add){ const W=worldAt(p[0],p[1]);
+// Double tap a regiment to halt it, or (if it is already halted or doing anything but charging) to send it
+// charging; double tap again to halt it. When the regiment is part of the selection, the whole selection
+// gets the order. Commanders and medics keep marching with their regiments.
+let LAST_TAP={t:0,p:[0,0]};
+function isDoubleTap(p){ const now=performance.now(), dbl=now-LAST_TAP.t<400&&Math.hypot(p[0]-LAST_TAP.p[0],p[1]-LAST_TAP.p[1])<40; LAST_TAP=dbl?{t:0,p:[0,0]}:{t:now,p}; return dbl; }
+function haltOrCharge(p){
+  const W=worldAt(p[0],p[1]); if(!W) return false; const sup=t=>UNITS[t].cls==='sup';
+  if(GAME.phase==='battle'){ const i=pickUnit(W,2.4,battleTeams()); if(i<0) return false; const gi=GR[i];
+    let list=BSEL.has(gi)?[...BSEL]:[gi]; if(!BSEL.has(gi)) setBattleSel([gi]);
+    if(list.some(k=>G[k]&&!sup(G[k].type))) list=list.filter(k=>G[k]&&!sup(G[k].type));
+    const charge=!list.every(k=>G[k].order===O_CHARGE); for(const k of list) setBattleOrder(k,charge?O_CHARGE:O_HOLD);
+    toast(charge?'Charge!':'Halt',1100); renderGroupPanel(); return true; }
+  if(GAME.phase==='deploy'){ const gi=pickGroup(W); if(gi<0) return false; const g=D.groups[gi];
+    let list=D.selObj.has(g)?selGroups():[g]; if(!D.selObj.has(g)) selectGroup(gi);
+    if(list.some(x=>!sup(x.type))) list=list.filter(x=>!sup(x.type));
+    const charge=!list.every(x=>x.order==='charge'); for(const x of list) x.order=charge?'charge':'hold';
+    toast(charge?'Will charge':'Will hold',1100); renderGroupPanel(); return true; }
+  return false; }
+function boxTap(p,add){ if(isDoubleTap(p)&&haltOrCharge(p)) return; const W=worldAt(p[0],p[1]);
   if(GAME.phase==='deploy'){ if(!add) selectGroup(-1); return; }
   const i=W?pickUnit(W,2.4,battleTeams()):-1; setBattleSel(i>=0?[GR[i]]:[],add); }
 function tap(p){
+  if(isDoubleTap(p)&&haltOrCharge(p)) return;
   const W=worldAt(p[0],p[1]); if(!W) return;
   if(GAME.phase==='deploy'){ selectGroup(pickGroup(W)); return; }
   inspectUnit(pickUnit(W,2.4,null));
@@ -3354,7 +3406,7 @@ function showWelcome(){
     <button class="btn" id="wMore">Endless & Survival</button>
     <button class="btn ghost" id="wWatch">Keep watching</button>
   </div>
-  <div class="hint">Drag to pan · scroll or pinch to zoom · right-drag or two-finger twist to turn · WASD and Q/E fly the camera · Space pauses · 1, 2, 3 set 1×, 3×, 9× speed · T opens the tech tree · tap a soldier to inspect it</div>`,s=>{
+  <div class="hint">Drag to pan · scroll or pinch to zoom · right-drag or two-finger twist to turn · WASD and Q/E fly the camera · Space pauses · 1, 2, 3 set 1×, 3×, 9× speed · T opens the tech tree · tap a soldier to inspect it · double tap a regiment to halt it or send it charging</div>`,s=>{
     $('#wX').onclick=closeModal; $('#wWatch').onclick=closeModal;
     $('#wCamp').onclick=()=>campaignDone()?showBattles('campaign'):openCampaign(PROG.level);
     $('#wSand').onclick=()=>showBattles('sandbox'); $('#wCustom').onclick=()=>showBattles('custom'); $('#wMore').onclick=()=>showBattles('endless');
