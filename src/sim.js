@@ -155,7 +155,7 @@ function initUnit(i,team,type,x,z,a,gi,sx,sz,sa){
 function makeBattleGroup(dg){
   let rad=2; for(let k=0;k<dg.slots.length;k+=3) rad=Math.max(rad,Math.hypot(dg.slots[k],dg.slots[k+1]));
   const o=Math.max(0,ORDER_IDS.indexOf(dg.order));
-  return {team:dg.team,type:dg.type,order:o,ax:dg.cx,az:dg.cz,a:dg.a,ca:Math.cos(dg.a),sa:Math.sin(dg.a),rad,n0:dg.slots.length/3,
+  return {bk:dg.bk||0,team:dg.team,type:dg.type,order:o,ax:dg.cx,az:dg.cz,a:dg.a,ca:Math.cos(dg.a),sa:Math.sin(dg.a),rad,n0:dg.slots.length/3,
     cnt:dg.slots.length/3,alive:dg.slots.length/3,sx:dg.cx*dg.slots.length/3,sz:dg.cz*dg.slots.length/3,slx:0,slz:0,cx:dg.cx,cz:dg.cz,err:0,fcnt:0,eng:0,ned:1e9,nex:0,nez:0,tg:null,phase:0,side:1,tmr:0,spdNow:0,mdx:Math.cos(dg.a),mdz:Math.sin(dg.a),retreat:false};
 }
 // append deploy-format groups to a running (or fresh) battle

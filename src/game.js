@@ -62,7 +62,7 @@ const GAME={mode:'demo',phase:'battle',level:0,mapId:'hills',seed:1,mapOpt:{},sp
   demoCycle:0,terrainDirty:false,terrainT:0,terBackup:null,
   custom:{map:'grassland',blue:1500,red:1500,bs:'balanced',rs:'balanced',dist:'normal',morale:true,rain:false}};
 let RENDER='gpu';
-const D={selObj:new Set(),fo:[{form:0,order:null,cav:'wings'},{form:0,order:null,cav:'wings'}],comp:[null,null],form:0,order:null,groups:[],nextId:1,tool:'brush',type:0,size:5,density:1,ranks:4,rot:0,team:0,sel:-1,stroke:null,undo:[],terrain:false,ttool:'raise',collapsed:false};
+const D={nextBk:1,selObj:new Set(),fo:[{form:0,order:null,cav:'wings'},{form:0,order:null,cav:'wings'}],comp:[null,null],form:0,order:null,groups:[],nextId:1,tool:'brush',type:0,size:5,density:1,ranks:4,rot:0,team:0,sel:-1,stroke:null,undo:[],terrain:false,ttool:'raise',collapsed:false};
 
 /* ---------- unit + tool icons ---------- */
 const ICON_PATHS={
@@ -188,7 +188,7 @@ function enterDeploy(cfg){
   else if(GAME.terBackup){ TER.k.set(GAME.terBackup.k); TER.own.fill(-1); }
   onTerrainChanged();
   STT=[playerStats(),enemyStats(GAME.enemyUlv)];
-  D.groups=[]; D.nextId=1; D.undo=[]; D.sel=-1; D.selObj.clear(); BSEL.clear(); D.team=GAME.editTeams[0]; D.terrain=false; D.stroke=null;
+  D.groups=[]; D.nextId=1; D.nextBk=1; D.undo=[]; D.sel=-1; D.selObj.clear(); BSEL.clear(); D.team=GAME.editTeams[0]; D.terrain=false; D.stroke=null;
   D.fo=[{form:'ranks',order:null,cav:'wings'},{form:'ranks',order:null,cav:'wings'}];
   if(GAME.limited){ const id=progForm(); D.fo[0]={form:id,order:null,cav:FORM_BY[id].cav}; }
   const gs=cfg.groups || (cfg.makeGroups?cfg.makeGroups(TER):[]);
@@ -201,9 +201,10 @@ function enterDeploy(cfg){
   camPreset('iso',!cfg.keepCamera);
   buildDeployDock(); showDock('deploy'); updateHud(true);
 }
-function addDeployGroup(g){ const n={id:D.nextId++,team:g.team,type:g.type,order:g.order||defaultOrder(g.type),cx:g.cx,cz:g.cz,a:g.a,slots:g.slots.slice(),sp:g.sp||UNITS[g.type].sp}; D.groups.push(n); return n; }
+function addDeployGroup(g){ const n={id:D.nextId++,team:g.team,type:g.type,order:g.order||defaultOrder(g.type),cx:g.cx,cz:g.cz,a:g.a,slots:g.slots.slice(),sp:g.sp||UNITS[g.type].sp}; if(g.bk) n.bk=g.bk; D.groups.push(n); return n; }
 // add a layout's regiments, keeping commanders and medics linked to the regiment they stand inside
-function addDeployGroups(gs){ const made=new Map(); for(const g of gs) made.set(g,addDeployGroup(g)); for(const g of gs) if(g.embedOf&&made.has(g.embedOf)) made.get(g).withId=made.get(g.embedOf).id; }
+// each layout numbers its blocks from 1; they get fresh numbers here so blocks never merge
+function addDeployGroups(gs){ const made=new Map(), bm=new Map(); for(const g of gs){ const n=addDeployGroup(g); if(g.bk){ const key=g.team+':'+g.bk; if(!bm.has(key)) bm.set(key,D.nextBk++); n.bk=bm.get(key); } made.set(g,n); } for(const g of gs) if(g.embedOf&&made.has(g.embedOf)) made.get(g).withId=made.get(g.embedOf).id; }
 // a selection plus the officers and medics inside the selected regiments
 function withLinked(list){ const ids=new Set(list.map(g=>g.id)); return list.concat(D.groups.filter(g=>g.withId&&ids.has(g.withId)&&!list.includes(g))); }
 function syncDeploy(){
@@ -524,7 +525,16 @@ function setSel(list,add){
   if(s.length && GAME.editTeams.length>1 && s[0].team!==D.team){ D.team=s[0].team; buildDeployDock(); }
   refreshHighlight(); renderGroupPanel();
 }
-function selectGroup(gi,add){ setSel(gi>=0&&D.groups[gi]?[D.groups[gi]]:[],add); }
+// a tap selects the whole block a regiment belongs to (its line, square, battery or wing); a second tap on a
+// selected block picks out that one regiment
+const blockMates=g=>g.bk?D.groups.filter(x=>x.bk===g.bk&&x.team===g.team):[g];
+function selectGroup(gi,add,single){ const g=gi>=0?D.groups[gi]:null; if(!g){ setSel([],add); return; }
+  const list=single?[g]:blockMates(g);
+  if(add&&list.length>1&&list.every(x=>D.selObj.has(x))){ list.forEach(x=>D.selObj.delete(x)); setSel([],true); return; }
+  if(add&&list.length>1){ setSel(list.filter(x=>!D.selObj.has(x)),true); return; }
+  setSel(list,add); }
+const battleMates=gi=>{ const g=G[gi]; return g&&g.bk?G.map((x,k)=>k).filter(k=>G[k].bk===g.bk&&G[k].team===g.team&&G[k].cnt>0):[gi]; };
+let NARROW=null;
 const battleTeams=()=>GAME.limited?[0]:[0,1];
 function setBattleSel(list,add){ if(!add) BSEL.clear(); for(const gi of list){ if(add&&list.length===1&&BSEL.has(gi)) BSEL.delete(gi); else BSEL.add(gi); } refreshHighlight(); renderGroupPanel(); }
 function setBattleOrder(gi,k){ const g=G[gi]; if(!g) return; g.order=k; const st=STT[g.team][g.type]; if(st.aura||st.heal){ if(k===O_ADV) attachEscort(g); else g.host=null; } if(k===O_FLANK){ g.phase=0; g.tmr=0; assignFlankSides(); } }
@@ -542,10 +552,12 @@ function boxSelect(a,b,add){
   const inside=(x,y,z)=>{ const q=projW(x,y,z); return q&&q[0]>=x0&&q[0]<=x1&&q[1]>=y0&&q[1]<=y1; };
   if(GAME.phase==='deploy'){
     const hit=D.groups.filter(g=>{ if(g.team!==D.team||!GAME.editTeams.includes(g.team)) return false; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(inside(wx,heightAt(wx,wz)+1,wz)) return true; } return false; });
-    if(!add) D.selObj.clear(); setSel(hit.filter(g=>!D.selObj.has(g)),true);
+    const all=new Set(); for(const g of hit) for(const m of blockMates(g)) all.add(m);
+    if(!add) D.selObj.clear(); setSel([...all].filter(g=>!D.selObj.has(g)),true);
   } else {
     const t=battleTeams(), hit=new Set(); for(let i=0;i<N;i++){ if(SS[i]!==1||!t.includes(TM[i])||hit.has(GR[i])) continue; if(inside(PX[i],PY[i]+1,PZ[i])) hit.add(GR[i]); }
-    if(!add) BSEL.clear(); setBattleSel([...hit].filter(gi=>!BSEL.has(gi)),true);
+    const all=new Set(); for(const gi of hit) for(const k of battleMates(gi)) all.add(k);
+    if(!add) BSEL.clear(); setBattleSel([...all].filter(gi=>!BSEL.has(gi)),true);
   }
 }
 function groupBounds(g,dx,dz){ let ok=true; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(!inZone(wx+dx,wz+dz,g.team)){ ok=false; break; } } return ok; }
@@ -836,7 +848,7 @@ function longPress(p){
   const i=pickUnit(W,2.4,null); if(i<0) return false;
   inspectUnit(i);
   // (the soldier card carries the regiment's orders, so the separate orders panel stays shut)
-  if(GAME.phase==='battle'&&battleTeams().includes(TM[i])&&!BSEL.has(GR[i])) setBattleSel([GR[i]]);
+  if(GAME.phase==='battle'&&battleTeams().includes(TM[i])&&!BSEL.has(GR[i])) setBattleSel(battleMates(GR[i]));
   return true; }
 stage.addEventListener('pointerdown',e=>{
   try{ stage.setPointerCapture(e.pointerId); }catch(_){}
@@ -868,7 +880,7 @@ function beginSingle(e,p){
     const W=worldAt(p[0],p[1]);
     if(W && D.terrain){ GST={kind:'terrain'}; terrainBegin(W); return; }
     if(W){ const gi=pickGroup(W);
-      if(gi>=0){ const g=D.groups[gi]; if(e.shiftKey||e.ctrlKey||e.metaKey){ selectGroup(gi,true); return; } if(!D.selObj.has(g)) selectGroup(gi); pushUndo(); GST={kind:'move',last:W,gi}; return; }
+      if(gi>=0){ const g=D.groups[gi]; if(e.shiftKey||e.ctrlKey||e.metaKey){ selectGroup(gi,true); return; } const mates=blockMates(g), was=mates.length>1&&mates.every(x=>D.selObj.has(x))&&selGroups().length===mates.length, alone=mates.length>1&&D.selObj.has(g)&&selGroups().length===1; if(!D.selObj.has(g)) selectGroup(gi); pushUndo(); GST={kind:'move',last:W,gi,was,alone}; return; }
       if(e.shiftKey||e.ctrlKey||e.metaKey){ GST={kind:'box',a:p,b:p,add:true}; return; } }
   }
   if(GAME.phase==='battle' && (BSELMODE||e.shiftKey) && e.button===0){ GST={kind:'box',a:p,b:p,add:e.shiftKey}; return; }
@@ -887,7 +899,7 @@ function moveSingle(p){
 function endSingle(o){
   const g=GST; GST=null; if(LP){ clearTimeout(LP.timer); LP=null; } if(!g||g.kind==='held') return;
   const moved=Math.hypot(o.p[0]-o.start[0],o.p[1]-o.start[1]), dt=performance.now()-o.t;
-  if(g.kind==='tool') toolEnd(); else if(g.kind==='terrain') terrainEnd(); else if(g.kind==='move'){ moveEnd(g.gi); if(moved<6&&dt<450&&isDoubleTap(o.p)){ if(D.undo.length) D.undo.pop(); haltOrCharge(o.p); } }
+  if(g.kind==='tool') toolEnd(); else if(g.kind==='terrain') terrainEnd(); else if(g.kind==='move'){ moveEnd(g.gi); if(moved<6&&dt<450){ if(D.undo.length) D.undo.pop(); if(isDoubleTap(o.p)) haltOrCharge(o.p); else if(g.was||g.alone){ const gi=g.gi, one=g.was; clearTimeout(NARROW); NARROW=setTimeout(()=>selectGroup(gi,false,one),400); } } }
   else if(g.kind==='pan' && moved<8 && dt<450) tap(o.p);
   else if(g.kind==='box'){ if(moved<6) boxTap(o.p,g.add); else boxSelect(g.a,g.b,g.add); }
 }
@@ -901,26 +913,33 @@ function movePinch(){
   if(GST.W0){ const W=worldAtPlane(m[0],m[1],GST.h); if(W){ CAM.g.tx+=GST.W0[0]-W[0]; CAM.g.tz+=GST.W0[1]-W[1]; camClamp(CAM.g); snapCam(); } }
 }
 function zoomAt(p,f){ const W0=worldAtPlane(p[0],p[1],CAM.ty); CAM.g.dist=clamp(CAM.g.dist*f,6,CAM_MAX); CAM.follow=-1; snapCam(); if(W0){ const W=worldAtPlane(p[0],p[1],CAM.ty); if(W){ CAM.g.tx+=W0[0]-W[0]; CAM.g.tz+=W0[1]-W[1]; camClamp(CAM.g); snapCam(); } } }
-// Double tap a regiment to send it in (charging; cavalry ride round the flank instead), and again to halt it. When the regiment is part of the selection, the whole selection
+// Double tap a regiment to send it in (most advance; berserkers and champions charge; cavalry ride round the
+// flank), and again to halt it. When the regiment is part of the selection, the whole selection
 // gets the order. Commanders and medics keep marching with their regiments.
 let LAST_TAP={t:0,p:[0,0]};
-function isDoubleTap(p){ const now=performance.now(), dbl=now-LAST_TAP.t<400&&Math.hypot(p[0]-LAST_TAP.p[0],p[1]-LAST_TAP.p[1])<40; LAST_TAP=dbl?{t:0,p:[0,0]}:{t:now,p}; return dbl; }
+function isDoubleTap(p){ const now=performance.now(), dbl=now-LAST_TAP.t<400&&Math.hypot(p[0]-LAST_TAP.p[0],p[1]-LAST_TAP.p[1])<40; if(dbl){ clearTimeout(NARROW); NARROW=null; } LAST_TAP=dbl?{t:0,p:[0,0]}:{t:now,p}; return dbl; }
+const goOrder=t=>{ const u=UNITS[t]; return u.cls==='cav'?'flank':(u.id==='bers'||u.id==='elite')?'charge':'advance'; };
+function goToast(types){ const o=new Set(types.filter(t=>UNITS[t].cls!=='sup').map(goOrder)); return o.size>1?'Forward!':o.has('flank')?'Flank!':o.has('charge')?'Charge!':'Advance!'; }
 function haltOrCharge(p){
   const W=worldAt(p[0],p[1]); if(!W) return false; const sup=t=>UNITS[t].cls==='sup';
   if(GAME.phase==='battle'){ const i=pickUnit(W,2.4,battleTeams()); if(i<0) return false; const gi=GR[i];
-    let list=BSEL.has(gi)?[...BSEL]:[gi]; if(!BSEL.has(gi)) setBattleSel([gi]);
+    let list=BSEL.has(gi)?[...BSEL]:battleMates(gi); if(!BSEL.has(gi)) setBattleSel(list);
     if(list.some(k=>G[k]&&!sup(G[k].type))) list=list.filter(k=>G[k]&&!sup(G[k].type));
-    const go=k=>UNITS[G[k].type].cls==='cav'?O_FLANK:O_CHARGE, charge=!list.every(k=>G[k].order===go(k)); for(const k of list) setBattleOrder(k,charge?go(k):O_HOLD);
-    toast(charge?(list.every(k=>go(k)===O_FLANK)?'Flank!':'Charge!'):'Halt',1100); renderGroupPanel(); return true; }
+    const go=k=>ORDER_IDS.indexOf(goOrder(G[k].type)), charge=!list.every(k=>G[k].order===go(k)); for(const k of list) setBattleOrder(k,charge?go(k):O_HOLD);
+    toast(charge?goToast(list.map(k=>G[k].type)):'Halt',1100); renderGroupPanel(); return true; }
   if(GAME.phase==='deploy'){ const gi=pickGroup(W); if(gi<0) return false; const g=D.groups[gi];
-    let list=D.selObj.has(g)?selGroups():[g]; if(!D.selObj.has(g)) selectGroup(gi);
+    let list=D.selObj.has(g)?selGroups():blockMates(g); if(!D.selObj.has(g)) selectGroup(gi);
     if(list.some(x=>!sup(x.type))) list=list.filter(x=>!sup(x.type));
-    const go=x=>UNITS[x.type].cls==='cav'?'flank':'charge', charge=!list.every(x=>x.order===go(x)); for(const x of list) x.order=charge?go(x):'hold';
-    toast(charge?(list.every(x=>go(x)==='flank')?'Will flank':'Will charge'):'Will hold',1100); renderGroupPanel(); return true; }
+    const charge=!list.every(x=>x.order===goOrder(x.type)); for(const x of list) x.order=charge?goOrder(x.type):'hold';
+    toast(charge?'Will '+goToast(list.map(x=>x.type)).replace('!','').toLowerCase():'Will hold',1100); renderGroupPanel(); return true; }
   return false; }
 function boxTap(p,add){ if(isDoubleTap(p)&&haltOrCharge(p)) return; const W=worldAt(p[0],p[1]);
   if(GAME.phase==='deploy'){ if(!add) selectGroup(-1); return; }
-  const i=W?pickUnit(W,2.4,battleTeams()):-1; if(BSELMODE) PANEL_OPEN=true; setBattleSel(i>=0?[GR[i]]:[],add); }
+  const i=W?pickUnit(W,2.4,battleTeams()):-1; if(BSELMODE) PANEL_OPEN=true; if(i<0){ setBattleSel([],add); return; }
+  const gi=GR[i], mates=battleMates(gi), whole=mates.length>1&&mates.every(k=>BSEL.has(k));
+  if(add){ if(whole) mates.forEach(k=>BSEL.delete(k)); else mates.forEach(k=>BSEL.add(k)); refreshHighlight(); renderGroupPanel(); return; }
+  if(whole&&BSEL.size===mates.length){ clearTimeout(NARROW); NARROW=setTimeout(()=>setBattleSel([gi]),400); return; }
+  setBattleSel(mates,false); }
 function tap(p){
   if(isDoubleTap(p)&&haltOrCharge(p)) return;
   const W=worldAt(p[0],p[1]); if(!W) return;
