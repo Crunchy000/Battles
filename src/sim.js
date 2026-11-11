@@ -193,6 +193,7 @@ function resetBattle(){
 function setAbilities(team,ab){ B.shieldBlock[team]=ab.shieldwall?.7:.5; B.adjBlock[team]=ab.shieldwall?.45:.3; B.shieldArm[team]=ab.shieldwall?5:3; }
 
 // remove old corpses and escaped units to make room (endless / survival)
+function wallBetween(x0,z0,x1,z1){ const d=Math.hypot(x1-x0,z1-z0), n=Math.ceil(d/1.2); for(let k=1;k<n;k++){ const t=k/n; if(kindAt(x0+(x1-x0)*t,z0+(z1-z0)*t)===T_WALL) return true; } return false; }
 function compact(){
   const map=new Int32Array(N).fill(-1); let w=0;
   const keepCorpses = N < MAXU*0.55;
@@ -293,6 +294,7 @@ function updateGroups(){
     if(retarget){
       const e=nearestIn(g.team^1,g.cx,g.cz,Math.hypot(X1-X0,Z1-Z0));
       if(e>=0){ g.nex=PX[e]; g.nez=PZ[e]; g.ned=Math.hypot(g.nex-g.cx,g.nez-g.cz); } else g.ned=1e9;
+      g.behindWall=e>=0&&g.ned<120&&wallBetween(g.cx,g.cz,g.nex,g.nez);
       let best=null, bd=1e18;
       for(const h of G){ if(h.team===g.team||h.alive<=0) continue; let d=(h.cx-g.cx)**2+(h.cz-g.cz)**2; if(st.cls==='cav'){ const hc=UNITS[h.type].cls; if(hc==='rng'||hc==='sie') d*=0.35; } if(d<bd){ bd=d; best=h; } }
       g.tg=best;
@@ -315,8 +317,10 @@ function updateGroups(){
     } else if(g.order===O_ADV||g.order===O_CHARGE){
       if(st.isR){
         const rng=st.range*0.85;
-        if(g.ned>rng && g.ned<1e8){ const f=flowAt(g.team,g.ax,g.az); if(f[0]||f[1]){ mx=f[0]; mz=f[1]; } else { mx=g.nex-g.ax; mz=g.nez-g.az; } move=true; }
-        else if(g.ned<11 && !st.isSiege && B.hasMelee[g.team]){ mx=g.cx-g.nex; mz=g.cz-g.nez; move=true; spd*=0.7; g.retreat=true; }
+        // missile troops behind a wall stay on it and shoot over it, rather than going round through a gate
+        if(g.ned>rng && g.ned<1e8 && !g.behindWall){ const f=flowAt(g.team,g.ax,g.az); if(f[0]||f[1]){ mx=f[0]; mz=f[1]; } else { mx=g.nex-g.ax; mz=g.nez-g.az; } move=true; }
+        // missile troops step back to let their foot in front, unless a wall stands between them and the enemy
+        else if(g.ned<11 && !st.isSiege && B.hasMelee[g.team] && !wallBetween(g.cx,g.cz,g.nex,g.nez)){ mx=g.cx-g.nex; mz=g.cz-g.nez; move=true; spd*=0.7; g.retreat=true; }
       } else {
         if(g.ned>7 && g.ned<1e8){ const f=flowAt(g.team,g.ax,g.az); if(f[0]||f[1]){ mx=f[0]; mz=f[1]; } else { mx=g.nex-g.ax; mz=g.nez-g.az; } move=true; }
         else if(tg){ const dx=tg.cx-g.ax, dz=tg.cz-g.az; if(dx*dx+dz*dz>9){ mx=dx; mz=dz; move=true; spd*=0.5; } }
@@ -349,7 +353,9 @@ function updateGroups(){
       else if(!g.retreat){ const rate=Math.min(0.7, st.speed*0.9/Math.max(3,g.rad))*(st.cls==='cav'?2:1); g.a=turnToward(g.a,Math.atan2(uz,ux),rate*DT); }
     } else {
       g.spdNow=0;
-      if(g.ned<220 && g.order!==O_HOLD){ const rate=Math.min(0.5,st.speed*0.8/Math.max(3,g.rad)); g.a=turnToward(g.a,Math.atan2(g.nez-g.az,g.nex-g.ax),rate*DT); }
+      // a standing regiment turns to face the enemy, but not when it is lined up behind a wall (it would swing
+      // half its line back off the wall)
+      if(g.ned<220 && g.order!==O_HOLD && !g.behindWall){ const rate=Math.min(0.5,st.speed*0.8/Math.max(3,g.rad)); g.a=turnToward(g.a,Math.atan2(g.nez-g.az,g.nex-g.ax),rate*DT); }
     }
     g.ca=Math.cos(g.a); g.sa=Math.sin(g.a);
   }
