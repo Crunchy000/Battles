@@ -1471,6 +1471,8 @@ function simTick(){
       const al=Math.hypot(ax,az)||1; dvx=ax/al*spd*0.9; dvz=az/al*spd*0.9;
       // routed troops only recover beside a commander, and a soldier who has broken twice never returns
       if(BA[i]>0 && RC[i]<2){ MO[i]+=DT*(enemyNear?0.5:8); if(!enemyNear && MO[i]>st.morale*0.45){ SS[i]=1; TG[i]=-1; } }
+      // defenders who reach the shelter of their own wall get their breath back and rally there
+      else if(tm===0 && B.safeX!=null && x<B.safeX && !enemyNear && RC[i]<3){ MO[i]+=DT*4; if(MO[i]>st.morale*0.45){ SS[i]=1; TG[i]=-1; } }
       if((tm===0&&x<X0+1.6)||(tm===1&&x>X1-1.6)){ SS[i]=3; B.esc[tm]++; B.escT[tm][ty]++; if(B.onEscape) B.onEscape(i); continue; }
       B.fleeing[tm]++;
     } else {
@@ -2780,7 +2782,7 @@ function startBattle(silent){
   STT=[playerStats(),enemyStats(GAME.enemyUlv)];
   setAbilities(0,GAME.limited?PROG.tech:{}); setAbilities(1,GAME.limited?enemyAbilities(GAME.enemyUlv):{});
   resetBattle(); seedRng(GAME.seed*31+7);
-  B.rules=GAME.rules; B.onKill=onKill; B.onEscape=onEscape;
+  B.rules=GAME.rules; B.onKill=onKill; B.onEscape=onEscape; B.safeX=GAME.mode==='survival'?-FORT_WX-4:null;
   addGroupsToSim(D.groups.filter(g=>g.slots.length));
   GAME.phase='battle'; GAME.ended=false; GAME.gold=0; GAME.endTimer=-1;
   if(GAME.mode==='endless'){ GAME.wave=1; GAME.deadAt=Array.from(B.deadT[0]); spawnEndlessWave(); }
@@ -3092,13 +3094,33 @@ function boxSelect(a,b,add){
   PANEL_OPEN=true;
   const x0=Math.min(a[0],b[0]), x1=Math.max(a[0],b[0]), y0=Math.min(a[1],b[1]), y1=Math.max(a[1],b[1]);
   const inside=(x,y,z)=>{ const q=projW(x,y,z); return q&&q[0]>=x0&&q[0]<=x1&&q[1]>=y0&&q[1]<=y1; };
+  // the box takes exactly the soldiers inside it: a regiment only partly inside is split, and the part
+  // inside becomes a regiment of its own
   if(GAME.phase==='deploy'){
-    const hit=D.groups.filter(g=>{ if(g.team!==D.team||!GAME.editTeams.includes(g.team)) return false; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(inside(wx,heightAt(wx,wz)+1,wz)) return true; } return false; });
-    VIEW.hlPulse=true; if(!add) D.selObj.clear(); setSel(hit.filter(g=>!D.selObj.has(g)),true);
+    pushUndo(); const picked=[];
+    for(const g of D.groups.slice()){ if(g.team!==D.team||!GAME.editTeams.includes(g.team)) continue;
+      const inS=[], outS=[]; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); (inside(wx,heightAt(wx,wz)+1,wz)?inS:outS).push(g.slots[k],g.slots[k+1],g.slots[k+2]); }
+      if(!inS.length) continue;
+      if(!outS.length){ picked.push(g); continue; }
+      g.slots=outS; const n=addDeployGroup({team:g.team,type:g.type,order:g.order,cx:g.cx,cz:g.cz,a:g.a,slots:inS,sp:g.sp}); picked.push(n); }
+    if(!picked.length) D.undo.pop(); else syncDeploy();
+    VIEW.hlPulse=true; if(!add) D.selObj.clear(); setSel(picked.filter(g=>!D.selObj.has(g)),true);
   } else {
-    const t=battleTeams(), hit=new Set(); for(let i=0;i<N;i++){ if(SS[i]!==1||!t.includes(TM[i])||hit.has(GR[i])) continue; if(inside(PX[i],PY[i]+1,PZ[i])) hit.add(GR[i]); }
-    VIEW.hlPulse=true; if(!add) BSEL.clear(); setBattleSel([...hit].filter(gi=>!BSEL.has(gi)),true);
+    const t=battleTeams(), by=new Map(), tot=new Map();
+    for(let i=0;i<N;i++){ if(SS[i]!==1||!t.includes(TM[i])) continue; const gi=GR[i]; tot.set(gi,(tot.get(gi)||0)+1); if(inside(PX[i],PY[i]+1,PZ[i])){ let l=by.get(gi); if(!l) by.set(gi,l=[]); l.push(i); } }
+    const picked=[]; for(const [gi,l] of by) picked.push(l.length===tot.get(gi)?gi:splitBattleGroup(gi,l));
+    VIEW.hlPulse=true; if(!add) BSEL.clear(); setBattleSel(picked.filter(gi=>!BSEL.has(gi)),true);
   }
+}
+// a few soldiers picked out of a regiment in battle become a regiment of their own, keeping its orders
+function splitBattleGroup(gi,list){
+  const g=G[gi]; let sx=0,sz=0; for(const i of list){ sx+=PX[i]; sz+=PZ[i]; } const cx=sx/list.length, cz=sz/list.length;
+  const ng=Object.assign({},g,{home:null,bk:0,ax:cx,az:cz,cx,cz,tg:null,phase:0,tmr:0,host:undefined,embed:false,escort:false,n0:list.length,cnt:list.length,alive:list.length,sx:0,sz:0,slx:0,slz:0,err:0,fcnt:0,eng:0,spdNow:0});
+  const ngi=G.length; G.push(ng); let rad=2;
+  for(const i of list){ const ex=PX[i]-cx, ez=PZ[i]-cz; SX[i]=g.sa*ex-g.ca*ez; SZ[i]=g.ca*ex+g.sa*ez; SA[i]=0; GR[i]=ngi; rad=Math.max(rad,Math.hypot(SX[i],SZ[i])); }
+  ng.rad=rad; g.n0=Math.max(1,g.n0-list.length);
+  if(UNITS[g.type].cls!=='sup') assignEscorts();
+  return ngi;
 }
 function groupBounds(g,dx,dz){ let ok=true; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(!inZone(wx+dx,wz+dz,g.team)){ ok=false; break; } } return ok; }
 // move every selected regiment together

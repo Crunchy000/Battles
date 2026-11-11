@@ -409,6 +409,8 @@ function simTick(){
       const al=Math.hypot(ax,az)||1; dvx=ax/al*spd*0.9; dvz=az/al*spd*0.9;
       // routed troops only recover beside a commander, and a soldier who has broken twice never returns
       if(BA[i]>0 && RC[i]<2){ MO[i]+=DT*(enemyNear?0.5:8); if(!enemyNear && MO[i]>st.morale*0.45){ SS[i]=1; TG[i]=-1; } }
+      // defenders who reach the shelter of their own wall get their breath back and rally there
+      else if(tm===0 && B.safeX!=null && x<B.safeX && !enemyNear && RC[i]<3){ MO[i]+=DT*4; if(MO[i]>st.morale*0.45){ SS[i]=1; TG[i]=-1; } }
       if((tm===0&&x<X0+1.6)||(tm===1&&x>X1-1.6)){ SS[i]=3; B.esc[tm]++; B.escT[tm][ty]++; if(B.onEscape) B.onEscape(i); continue; }
       B.fleeing[tm]++;
     } else {
