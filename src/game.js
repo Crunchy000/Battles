@@ -283,6 +283,76 @@ function startBattle(silent){
   $('#btnEnd').textContent=GAME.limited?'Withdraw':'End';
   if(!silent){ banner('Advance!','var(--brass-hi)',1200); audBattleStart(); }
 }
+/* ---------- debug snapshot ---------- */
+// A snapshot of the running battle: map, mode, every regiment and every living soldier. It is saved to the
+// artifact's database (where Claude can read it) under a short code, or downloaded as a file elsewhere.
+// debugRestore(snap) rebuilds the battle from it so a problem can be replayed.
+const DBG_ARR=['PX','PZ','VX','VZ','FA','HP','MO','CD','BA','CH','SX','SZ','SA','STN','STU','TM','TY','SS','GR','TG','RC'];
+const DBG_REF={PX,PZ,VX,VZ,FA,HP,MO,CD,BA,CH,SX,SZ,SA,STN,STU,TM,TY,SS,GR,TG,RC};
+function debugSnapshot(){
+  const live=[], map=new Int32Array(N).fill(-1);
+  for(let i=0;i<N;i++) if(SS[i]===1||SS[i]===2){ map[i]=live.length; live.push(i); }
+  const r2=v=>Math.round(v*100)/100;
+  const cols={}; for(const k of DBG_ARR){ const A=DBG_REF[k]; cols[k]=live.map(i=>k==='TG'?(A[i]>=0&&A[i]<N?map[A[i]]:-1):Number.isInteger(A[i])?A[i]:r2(A[i])).join(','); }
+  const gi=new Map(G.map((g,k)=>[g,k]));
+  const groups=G.map(g=>{ const o={}; for(const k in g){ const v=g[k]; if(k==='host'||k==='tg') o[k]=v&&gi.has(v)?gi.get(v):-1; else if(k==='home') o[k]=v?{cx:r2(v.cx),cz:r2(v.cz),a:r2(v.a),order:v.order,n:v.slots.length/3}:null; else if(typeof v==='number') o[k]=r2(v); else if(typeof v!=='function'&&typeof v!=='object') o[k]=v; } return o; });
+  const pick=(o,ks)=>{ const r={}; for(const k of ks) r[k]=o[k]; return r; };
+  return {v:1,at:new Date().toISOString(),ua:navigator.userAgent.slice(0,160),render:RENDER,
+    game:pick(GAME,['mode','mapId','seed','mapOpt','level','limited','zones','rules','wave','waveN','waveTimer','survT','spawnT','base0','deadAt','enemyUlv','speed','phase','title']),
+    simTime:r2(simTime),tick,N,n:live.length,
+    b:{start:B.start,dead:B.dead,esc:B.esc,active:B.active,broken:B.broken,hunt:B.hunt,noHunt:B.noHunt,phaseT:r2(B.phaseT),lastKill:r2(B.lastKill),safeX:B.safeX,tcx:B.tcx,tcz:B.tcz,startT:[...B.startT].map(a=>Array.from(a)),deadT:[...B.deadT].map(a=>Array.from(a)),escT:[...B.escT].map(a=>Array.from(a))},
+    prog:{roster:PROG.roster,tech:PROG.tech,upg:PROG.upg,formId:PROG.formId,formSurv:PROG.formSurv,level:PROG.level},
+    cam:{tx:r2(CAM.tx),tz:r2(CAM.tz),yaw:r2(CAM.yaw),pitch:r2(CAM.pitch),dist:r2(CAM.dist)},
+    sel:[...BSEL],groups,cols};
+}
+const debugCode=()=>{ const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s=''; for(let k=0;k<6;k++) s+=A[(Math.random()*A.length)|0]; return s; };
+async function saveDebug(){
+  const wasSpeed=GAME.speed; if(GAME.phase==='battle') setSpeed(0);
+  const snap=debugSnapshot(), code=debugCode(); snap.code=code;
+  let db=null; try{ db=window.claude&&typeof window.claude.use==='function'?await window.claude.use('db'):null; }catch(e){}
+  if(db){
+    try{
+      const {cols,...meta}=snap, keys=Object.keys(cols), chunks=[]; let cur={}, size=0;
+      for(const k of keys){ const len=cols[k].length; if(size+len>180000&&Object.keys(cur).length){ chunks.push(cur); cur={}; size=0; } cur[k]=cols[k]; size+=len; }
+      chunks.push(cur); meta.chunks=chunks.length;
+      // a single column can still be too big for one document: split it into parts
+      const docs=[]; chunks.forEach((c,k)=>{ for(const col in c){ const s=c[col]; if(s.length>200000){ delete c[col]; for(let p=0,q=0;p<s.length;p+=190000,q++) docs.push([`debug/${code}/parts/${col}_${q}`,{col,part:q,data:s.slice(p,p+190000)}]); } } docs.push([`debug/${code}/chunks/${k}`,c]); });
+      await db.doc('debug/'+code).set(meta);
+      for(const [p,d] of docs) await db.doc(p).set(d);
+      try{ navigator.clipboard&&navigator.clipboard.writeText('Massive Armies debug '+code); }catch(e){}
+      toast(`Debug snapshot saved. Code ${code} (copied). Tell Claude the code.`,6000);
+    }catch(e){ toast('Could not save the snapshot ('+((e&&e.code)||'error')+'). Downloading it instead.',3000); downloadDebug(snap,code); }
+  } else downloadDebug(snap,code);
+  if(GAME.phase==='battle'&&wasSpeed) setSpeed(wasSpeed);
+}
+function downloadDebug(snap,code){
+  const blob=new Blob([JSON.stringify(snap)],{type:'application/json'}), a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=`massive-armies-debug-${code}.json`; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },2000);
+  toast(`Debug snapshot downloaded (massive-armies-debug-${code}.json). Share that file.`,5000);
+}
+// rebuild a battle from a snapshot (for replaying a problem; the player's own save is left alone)
+function debugRestore(snap){
+  const gm=snap.game;
+  enterDeploy({mode:gm.mode,mapId:gm.mapId,seed:gm.seed,mapOpt:gm.mapOpt||{},limited:gm.limited,editTeams:gm.limited?[0]:[0,1],zones:gm.zones||[null,null],ulv:gm.enemyUlv||0,rules:gm.rules,makeGroups:()=>[]});
+  Object.assign(GAME,{wave:gm.wave,waveN:gm.waveN,waveTimer:gm.waveTimer,survT:gm.survT,spawnT:gm.spawnT,base0:gm.base0,deadAt:gm.deadAt||[]});
+  const lvf=(c,s)=>(snap.prog.upg||{})[c+'_'+s]||0;
+  STT=[gm.limited?computeStats(lvf,snap.prog.tech||{}):computeStats(lvZero,{}),enemyStats(gm.enemyUlv||0)];
+  setAbilities(0,gm.limited?snap.prog.tech||{}:{});
+  if(gm.mode==='survival'){ const lv=Math.min(5,Math.floor(gm.survT/100)); STT[1]=enemyStats(lv); setAbilities(1,enemyAbilities(lv)); }
+  else if(gm.mode==='endless'){ const lv=Math.min(5,Math.floor((gm.wave-1)/3)); STT[1]=enemyStats(lv); setAbilities(1,enemyAbilities(lv)); }
+  else setAbilities(1,gm.limited?enemyAbilities(gm.enemyUlv||0):{});
+  resetBattle(); B.rules=gm.rules||B.rules; B.onKill=onKill; B.onEscape=onEscape;
+  const b=snap.b; Object.assign(B,{start:b.start,dead:b.dead,esc:b.esc,broken:b.broken,hunt:b.hunt,noHunt:b.noHunt,phaseT:b.phaseT,lastKill:b.lastKill,safeX:b.safeX});
+  B.startT=b.startT.map(a=>Int32Array.from(a)); B.deadT=b.deadT.map(a=>Int32Array.from(a)); B.escT=b.escT.map(a=>Int32Array.from(a));
+  G=snap.groups.map(o=>Object.assign({},o)); G.forEach(g=>{ g.host=g.host>=0?G[g.host]:(g.host===-1?null:undefined); g.tg=g.tg>=0?G[g.tg]:null; if(g.home) g.home.slots=[]; });
+  const n=snap.n, C={}; for(const k of DBG_ARR) C[k]=snap.cols[k].split(',').map(Number);
+  for(let i=0;i<n;i++){ initUnit(i,C.TM[i],C.TY[i],C.PX[i],C.PZ[i],C.FA[i],C.GR[i],C.SX[i],C.SZ[i],C.SA[i]); for(const k of DBG_ARR) DBG_REF[k][i]=C[k][i]; PY[i]=heightAt(PX[i],PZ[i]); }
+  N=n; tick=snap.tick; simTime=snap.simTime;
+  GAME.phase='battle'; GAME.ended=false; GAME.gold=0; GAME.endTimer=-1;
+  VIEW.zones=[null,null]; hideCards(); showDock('battle'); setSpeed(0); updateHud(true);
+  Object.assign(CAM.g,snap.cam); snapCam();
+  return n;
+}
 const killPay=()=>GAME.mode==='campaign'?0.6:0.45;
 function onKill(t){ if(GAME.limited && TM[t]===1) GAME.gold+=UNITS[TY[t]].cost*killPay(); if(VIEW.hlUnit===t) setTimeout(updateInspect,0); }
 function onEscape(i){ if(GAME.limited && TM[i]===1) GAME.gold+=UNITS[TY[i]].cost*killPay()*0.5; }
@@ -1251,6 +1321,7 @@ $('#btnSound').onclick=()=>{ const p=$('#soundPop'), show=p.hidden; closePops();
 // interface sounds: coins for purchases, a soft tick for other buttons
 document.addEventListener('click',e=>{ const t=e.target.closest&&e.target.closest('button'); if(!t||t.disabled) return;
   if(t.closest('[data-buy],[data-tech],[data-upg]')) audUi('coin',0.6); else if(t.id!=='sdOn'&&!t.closest('[data-k],#sbStop')) audUi('tick',0.3); },true);
+$('#btnDebug').onclick=()=>saveDebug();
 $('#btnBattles').onclick=()=>showBattles(GAME.mode==='endless'?'endless':GAME.mode==='survival'?'survival':GAME.mode==='sandbox'?'sandbox':GAME.mode==='custom'?'custom':'campaign');
 
 /* ---------- renderer setup + loop ---------- */
