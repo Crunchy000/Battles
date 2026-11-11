@@ -2835,7 +2835,11 @@ async function saveDebug(){
   } else downloadDebug(snap,code);
   if(GAME.phase==='battle'&&wasSpeed) setSpeed(wasSpeed);
 }
-function downloadDebug(snap,code){
+async function downloadDebug(snap,code){
+  const name=`massive-armies-debug-${code}.json`;
+  // inside claude.ai the viewer offers the file; elsewhere a plain download link does it
+  let dl=null; try{ dl=window.claude&&typeof window.claude.use==='function'?await window.claude.use('downloads'):null; }catch(e){}
+  if(dl){ try{ await dl.save({filename:name,data:new Blob([JSON.stringify(snap)],{type:'application/json'})}); toast(`Debug snapshot saved as ${name}. Share that file.`,5000); }catch(e){ toast('The snapshot was not saved.',2500); } return; }
   const blob=new Blob([JSON.stringify(snap)],{type:'application/json'}), a=document.createElement('a');
   a.href=URL.createObjectURL(blob); a.download=`massive-armies-debug-${code}.json`; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },2000);
   toast(`Debug snapshot downloaded (massive-armies-debug-${code}.json). Share that file.`,5000);
