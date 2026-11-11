@@ -386,12 +386,15 @@ function layoutSurvival(counts,T){
   const ids=c=>UNITS.map((u,i)=>i).filter(i=>UNITS[i].cls===c && counts[i]>0);
   const rank={heavy:0,shield:1,elite:2,spear:3,sword:4,bers:5};
   const inf=ids('inf').sort((a,b)=>rank[UNITS[a].id]-rank[UNITS[b].id]);
-  // infantry: split each type across the three gates, stacked back from the wall
-  const depth=[0,0,0];
+  // infantry: split each type across the three gates, stacked back from the wall. A plug goes at most PLUG
+  // metres deep (a deeper column only gets in its own way); the rest of the foot waits in reserve blocks.
+  const PLUG=34, depth=[0,0,0], reserve=[], toReserve=(t,n)=>{ const r=reserve.find(x=>x[0]===t); if(r) r[1]+=n; else reserve.push([t,n]); };
   for(const t of inf){ const sp=UNITS[t].sp; let n=counts[t];
     for(let gi=0;gi<3;gi++){ const take=Math.round(n/(3-gi)); n-=take; if(!take) continue;
-      const cols=Math.max(4,Math.min(9,Math.ceil(Math.sqrt(take*0.8)))), ranks=Math.ceil(take/cols), d=ranks*sp;
-      mk(t, wx-3.2-depth[gi]-d/2, GATES[gi], fmRect(cols,ranks,sp,take)); depth[gi]+=d+0.6; } }
+      const cols=Math.max(4,Math.min(9,Math.ceil(Math.sqrt(take*0.8)))), room=Math.max(0,Math.floor((PLUG-depth[gi])/sp))*cols, put=Math.min(take,room);
+      if(take>put) toReserve(t,take-put); if(!put) continue;
+      const ranks=Math.ceil(put/cols), d=ranks*sp;
+      mk(t, wx-3.2-depth[gi]-d/2, GATES[gi], fmRect(cols,ranks,sp,put)); depth[gi]+=d+0.6; } }
   // missile troops: along the wall between and beside the gates
   const segs=[[-76,-47],[-33,-7],[7,33],[47,76]].map(s=>[s[0]*MS,s[1]*MS]), segLen=segs.reduce((a,s)=>a+s[1]-s[0],0);
   const rng=ids('rng'); let rTotal=rng.reduce((a,t)=>a+counts[t],0);
@@ -405,11 +408,15 @@ function layoutSurvival(counts,T){
   const sup=ids('sup'); let gz=0;
   for(const t of sup){ const n=counts[t];
     let left=n; for(let gi=0;gi<3&&left>0;gi++){ const take=Math.ceil(left/(3-gi)); left-=take; mk(t, wx-6-depth[gi]-1.5, GATES[gi]+(gz%2?6:-6), fmRect(Math.min(take,6),Math.ceil(take/6),1.6,take)); } gz++; }
-  // cavalry reserve and siege well back
-  const cav=ids('cav'); let cz=-30;
-  for(const t of cav){ const n=counts[t], sp=UNITS[t].sp, cols=Math.min(12,Math.ceil(Math.sqrt(n*2))), r=Math.ceil(n/cols); mk(t, wx-34-r*sp/2, cz, fmRect(cols,r,sp,n)); cz+=cols*sp+6; }
-  const sie=ids('sie'); let sz=-60;
-  for(const t of sie){ const n=counts[t], cols=Math.min(14,n), r=Math.ceil(n/cols); mk(t, wx-58, sz+cols*2.5, fmRect(cols,r,5,n)); sz+=cols*5+5; }
+  // the reserve: spare foot, then horse, then guns, in blocks of a few hundred (batteries of 24 guns) in rows
+  // behind the gate plugs
+  for(const t of ids('cav')) toReserve(t,counts[t]);
+  for(const t of ids('sie')) toReserve(t,counts[t]);
+  let rx=wx-3.2-Math.max(...depth)-10, rz=Z0+10, rowD=0;
+  for(const [t,total] of reserve){ const u=UNITS[t], sg=u.cls==='sie', sp=sg?5:u.sp, cols=sg?6:16, per=cols*(sg?4:14); let n=total;
+    while(n>0){ const k=Math.min(n,per); n-=k; const c=Math.min(cols,k), r=Math.ceil(k/c), w=c*sp, d=r*sp;
+      if(rz+w>Z1-10){ rz=Z0+10; rx-=rowD+4; rowD=0; }
+      mk(t, rx-d/2, rz+w/2, fmRect(c,r,sp,k)); rz+=w+4; rowD=Math.max(rowD,d); } }
   // anyone who would stand on the wall, in a tower or outside the field moves to the nearest open ground behind it
   const zone=[X0+8,wx-2.4]; packBlocks(groups.map(g=>({gs:[g]})),T,zone,1);
   return placeGroups(groups,T,zone,1);
@@ -606,7 +613,7 @@ function packBlocks(built,T,zone,dir){
   // place one set of regiments as a unit; false when there is no room for it anywhere
   const fit=(gs,m)=>{ let e=groupsExtent(gs); if(!(e.x1>=e.x0)) return true;
     // start from inside the zone, however far back or out to the side it was planned
-    const cx=clamp(0,zone[0]+2-e.x0,Math.max(zone[0]+2-e.x0,zone[1]-2-e.x1)), cz=clamp(0,Z0+3-e.z0,Math.max(Z0+3-e.z0,Z1-3-e.z1)); if(cx||cz){ shiftGroups(gs,cx,cz); e=groupsExtent(gs); }
+    const cx=e.x1-e.x0>zone[1]-zone[0]-4?0:clamp(0,zone[0]+2-e.x0,zone[1]-2-e.x1), cz=e.z1-e.z0>Z1-Z0-6?0:clamp(0,Z0+3-e.z0,Z1-3-e.z1); if(cx||cz){ shiftGroups(gs,cx,cz); e=groupsExtent(gs); }
     const w=Math.ceil(e.x1-e.x0)+1, h=Math.ceil(e.z1-e.z0)+1;
     for(let q=0;q<O.length;q+=2){ const dx=dir*O[q], dz=O[q+1];
       const i0=Math.floor(e.x0+dx)-gx0-m, j0=Math.floor(e.z0+dz)-gz0-m, i1=i0+w+2*m, j1=j0+h+2*m;
