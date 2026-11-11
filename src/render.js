@@ -293,7 +293,7 @@ const INST=new Float32Array(MAXU*16);
 const PINST=new Float32Array(MAXP*8);
 const QINST=new Float32Array(MAXQ*8);
 const bucketCount=new Int32Array(NT*2), bucketOff=new Int32Array(NT*2), bucketOf=new Uint8Array(MAXU);
-const VIEW={alpha:1, hlGroup:-1, hlMask:null, hlUnit:-1, zones:[null,null], time:0};
+const VIEW={alpha:1, hlGroup:-1, hlMask:null, hlPulse:false, hlUnit:-1, zones:[null,null], time:0};
 function buildUnitInstances(){
   bucketCount.fill(0);
   const ex=CAM.eye[0], ez=CAM.eye[2], lod2=Math.pow(Math.max(60,CAM.dist*0.55),2);
@@ -305,7 +305,7 @@ function buildUnitInstances(){
     const o=(cur[b]++)*16, ty=TY[i], u=UNITS[ty];
     INST[o]=OX[i]+(PX[i]-OX[i])*a; INST[o+2]=OZ[i]+(PZ[i]-OZ[i])*a; INST[o+1]=PY[i]; INST[o+3]=FA[i];
     INST[o+4]=TM[i]; INST[o+5]=SS[i]===0?0:Math.min(1,Math.hypot(VX[i],VZ[i])/2.5); INST[o+6]=AT[i]; INST[o+7]=SS[i]===0?DE[i]:0;
-    INST[o+8]=FL[i]; INST[o+9]=u.scale; INST[o+10]=((GR[i]<hml&&hm[GR[i]])||i===hu)?1:0; INST[o+11]=(i*1.618)%6.283;
+    INST[o+8]=FL[i]; INST[o+9]=u.scale; INST[o+10]=(GR[i]<hml&&hm[GR[i]])?(VIEW.hlPulse?2:1):i===hu?1:0; INST[o+11]=(i*1.618)%6.283;
     INST[o+12]=u.foot; INST[o+13]=SS[i]===2?1:0; INST[o+14]=0; INST[o+15]=0;
   }
   return total;
@@ -403,7 +403,8 @@ fn matColor(m: i32, team: f32) -> vec3f {
   col = mix(col, col * 0.42 + vec3f(0.05, 0.05, 0.04), death);
   col = mix(col, vec3f(1.0, 0.96, 0.9), c.x * 0.65);
   var o: UOut; o.pos = u.vp * vec4f(wp, 1.0); o.wp = wp; o.n = wn; o.col = col;
-  o.emi = c.z * (0.32 + 0.18 * sin(t * 6.0)); return o;
+  // selected soldiers glow; they pulse only when picked with the selection box
+  o.emi = min(c.z, 1.0) * (0.32 + select(0.0, 0.18 * sin(t * 6.0), c.z > 1.5)); return o;
 }
 @fragment fn fsUnit(i: UOut) -> @location(0) vec4f {
   let n = normalize(i.n); var c = lit(i.col, n);

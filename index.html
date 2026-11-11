@@ -1255,6 +1255,7 @@ function resetBattle(){
 function setAbilities(team,ab){ B.shieldBlock[team]=ab.shieldwall?.7:.5; B.adjBlock[team]=ab.shieldwall?.45:.3; B.shieldArm[team]=ab.shieldwall?5:3; }
 
 // remove old corpses and escaped units to make room (endless / survival)
+const HUNT_R=45;   // how close the enemy must be before advancing soldiers break ranks
 function wallBetween(x0,z0,x1,z1){ const d=Math.hypot(x1-x0,z1-z0), n=Math.ceil(d/1.2); for(let k=1;k<n;k++){ const t=k/n; if(kindAt(x0+(x1-x0)*t,z0+(z1-z0)*t)===T_WALL) return true; } return false; }
 function compact(){
   const map=new Int32Array(N).fill(-1); let w=0;
@@ -1530,6 +1531,12 @@ function simTick(){
           if(k2===T_GRASS||k2===T_SAND||k2===T_ROAD){ const c2=cellIdx(sx,sz); TER.k[c2]=T_STAKES; TER.own[c2]=tm; stakesChanged=true; } }
         AT[i]=1; dustPuff(fx,heightAt(fx,fz),fz,1);
       }
+      // advancing or charging regiments close to the enemy break ranks: each soldier makes for the nearest enemy
+      // (missile troops and guns until one is in range; missile troops on a wall stay on it)
+      if(follow && !B.hunt && (g.order===O_ADV||g.order===O_CHARGE) && g.ned<HUNT_R && !st.heal && !st.aura && !st.stakes && !(st.isR&&g.behindWall)){
+        const f=flowAt(tm,x,z); follow=false;
+        if(f[0]||f[1]){ dvx=f[0]*spd; dvz=f[1]*spd; } else { const hx=g.nex-x, hz=g.nez-z, hl=Math.hypot(hx,hz)||1; dvx=hx/hl*spd; dvz=hz/hl*spd; }
+        faceT=Math.atan2(dvz,dvx); }
       if(follow && B.hunt){
         follow=false; const f=flowAt(tm,x,z);
         if(f[0]||f[1]){ dvx=f[0]*spd; dvz=f[1]*spd; } else if(g.ned<1e8){ const hx=g.nex-x, hz=g.nez-z, hl=Math.hypot(hx,hz)||1; dvx=hx/hl*spd; dvz=hz/hl*spd; }
@@ -2062,7 +2069,7 @@ const INST=new Float32Array(MAXU*16);
 const PINST=new Float32Array(MAXP*8);
 const QINST=new Float32Array(MAXQ*8);
 const bucketCount=new Int32Array(NT*2), bucketOff=new Int32Array(NT*2), bucketOf=new Uint8Array(MAXU);
-const VIEW={alpha:1, hlGroup:-1, hlMask:null, hlUnit:-1, zones:[null,null], time:0};
+const VIEW={alpha:1, hlGroup:-1, hlMask:null, hlPulse:false, hlUnit:-1, zones:[null,null], time:0};
 function buildUnitInstances(){
   bucketCount.fill(0);
   const ex=CAM.eye[0], ez=CAM.eye[2], lod2=Math.pow(Math.max(60,CAM.dist*0.55),2);
@@ -2074,7 +2081,7 @@ function buildUnitInstances(){
     const o=(cur[b]++)*16, ty=TY[i], u=UNITS[ty];
     INST[o]=OX[i]+(PX[i]-OX[i])*a; INST[o+2]=OZ[i]+(PZ[i]-OZ[i])*a; INST[o+1]=PY[i]; INST[o+3]=FA[i];
     INST[o+4]=TM[i]; INST[o+5]=SS[i]===0?0:Math.min(1,Math.hypot(VX[i],VZ[i])/2.5); INST[o+6]=AT[i]; INST[o+7]=SS[i]===0?DE[i]:0;
-    INST[o+8]=FL[i]; INST[o+9]=u.scale; INST[o+10]=((GR[i]<hml&&hm[GR[i]])||i===hu)?1:0; INST[o+11]=(i*1.618)%6.283;
+    INST[o+8]=FL[i]; INST[o+9]=u.scale; INST[o+10]=(GR[i]<hml&&hm[GR[i]])?(VIEW.hlPulse?2:1):i===hu?1:0; INST[o+11]=(i*1.618)%6.283;
     INST[o+12]=u.foot; INST[o+13]=SS[i]===2?1:0; INST[o+14]=0; INST[o+15]=0;
   }
   return total;
@@ -2172,7 +2179,8 @@ fn matColor(m: i32, team: f32) -> vec3f {
   col = mix(col, col * 0.42 + vec3f(0.05, 0.05, 0.04), death);
   col = mix(col, vec3f(1.0, 0.96, 0.9), c.x * 0.65);
   var o: UOut; o.pos = u.vp * vec4f(wp, 1.0); o.wp = wp; o.n = wn; o.col = col;
-  o.emi = c.z * (0.32 + 0.18 * sin(t * 6.0)); return o;
+  // selected soldiers glow; they pulse only when picked with the selection box
+  o.emi = min(c.z, 1.0) * (0.32 + select(0.0, 0.18 * sin(t * 6.0), c.z > 1.5)); return o;
 }
 @fragment fn fsUnit(i: UOut) -> @location(0) vec4f {
   let n = normalize(i.n); var c = lit(i.col, n);
@@ -3062,7 +3070,7 @@ function setSel(list,add){
 // a tap selects the whole block a regiment belongs to (its line, square, battery or wing); a second tap on a
 // selected block picks out that one regiment
 const blockMates=g=>g.bk?D.groups.filter(x=>x.bk===g.bk&&x.team===g.team):[g];
-function selectGroup(gi,add,single){ const g=gi>=0?D.groups[gi]:null; if(!g){ setSel([],add); return; }
+function selectGroup(gi,add,single){ VIEW.hlPulse=false; const g=gi>=0?D.groups[gi]:null; if(!g){ setSel([],add); return; }
   const list=single?[g]:blockMates(g);
   if(add&&list.length>1&&list.every(x=>D.selObj.has(x))){ list.forEach(x=>D.selObj.delete(x)); setSel([],true); return; }
   if(add&&list.length>1){ setSel(list.filter(x=>!D.selObj.has(x)),true); return; }
@@ -3086,12 +3094,10 @@ function boxSelect(a,b,add){
   const inside=(x,y,z)=>{ const q=projW(x,y,z); return q&&q[0]>=x0&&q[0]<=x1&&q[1]>=y0&&q[1]<=y1; };
   if(GAME.phase==='deploy'){
     const hit=D.groups.filter(g=>{ if(g.team!==D.team||!GAME.editTeams.includes(g.team)) return false; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(inside(wx,heightAt(wx,wz)+1,wz)) return true; } return false; });
-    const all=new Set(); for(const g of hit) for(const m of blockMates(g)) all.add(m);
-    if(!add) D.selObj.clear(); setSel([...all].filter(g=>!D.selObj.has(g)),true);
+    VIEW.hlPulse=true; if(!add) D.selObj.clear(); setSel(hit.filter(g=>!D.selObj.has(g)),true);
   } else {
     const t=battleTeams(), hit=new Set(); for(let i=0;i<N;i++){ if(SS[i]!==1||!t.includes(TM[i])||hit.has(GR[i])) continue; if(inside(PX[i],PY[i]+1,PZ[i])) hit.add(GR[i]); }
-    const all=new Set(); for(const gi of hit) for(const k of battleMates(gi)) all.add(k);
-    if(!add) BSEL.clear(); setBattleSel([...all].filter(gi=>!BSEL.has(gi)),true);
+    VIEW.hlPulse=true; if(!add) BSEL.clear(); setBattleSel([...hit].filter(gi=>!BSEL.has(gi)),true);
   }
 }
 function groupBounds(g,dx,dz){ let ok=true; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(!inZone(wx+dx,wz+dz,g.team)){ ok=false; break; } } return ok; }
@@ -3382,7 +3388,7 @@ function longPress(p){
   const i=pickUnit(W,2.4,null); if(i<0) return false;
   inspectUnit(i);
   // (the soldier card carries the regiment's orders, so the separate orders panel stays shut)
-  if(GAME.phase==='battle'&&battleTeams().includes(TM[i])&&!BSEL.has(GR[i])) setBattleSel(battleMates(GR[i]));
+  if(GAME.phase==='battle'&&battleTeams().includes(TM[i])&&!BSEL.has(GR[i])){ VIEW.hlPulse=false; setBattleSel(battleMates(GR[i])); }
   return true; }
 stage.addEventListener('pointerdown',e=>{
   try{ stage.setPointerCapture(e.pointerId); }catch(_){}
@@ -3457,7 +3463,7 @@ function goToast(types){ const o=new Set(types.filter(t=>UNITS[t].cls!=='sup').m
 function haltOrCharge(p){
   const W=worldAt(p[0],p[1]); if(!W) return false; const sup=t=>UNITS[t].cls==='sup';
   if(GAME.phase==='battle'){ const i=pickUnit(W,2.4,battleTeams()); if(i<0) return false; const gi=GR[i];
-    let list=BSEL.has(gi)?[...BSEL]:battleMates(gi); if(!BSEL.has(gi)) setBattleSel(list);
+    let list=BSEL.has(gi)?[...BSEL]:battleMates(gi); if(!BSEL.has(gi)){ VIEW.hlPulse=false; setBattleSel(list); }
     if(list.some(k=>G[k]&&!sup(G[k].type))) list=list.filter(k=>G[k]&&!sup(G[k].type));
     const go=k=>ORDER_IDS.indexOf(goOrder(G[k].type)), charge=!list.every(k=>G[k].order===go(k)); for(const k of list) setBattleOrder(k,charge?go(k):O_HOLD);
     toast(charge?goToast(list.map(k=>G[k].type)):'Halt',1100); renderGroupPanel(); return true; }
@@ -3469,11 +3475,8 @@ function haltOrCharge(p){
   return false; }
 function boxTap(p,add){ if(isDoubleTap(p)&&haltOrCharge(p)) return; const W=worldAt(p[0],p[1]);
   if(GAME.phase==='deploy'){ if(!add) selectGroup(-1); return; }
-  const i=W?pickUnit(W,2.4,battleTeams()):-1; if(BSELMODE) PANEL_OPEN=true; if(i<0){ setBattleSel([],add); return; }
-  const gi=GR[i], mates=battleMates(gi), whole=mates.length>1&&mates.every(k=>BSEL.has(k));
-  if(add){ if(whole) mates.forEach(k=>BSEL.delete(k)); else mates.forEach(k=>BSEL.add(k)); refreshHighlight(); renderGroupPanel(); return; }
-  if(whole&&BSEL.size===mates.length){ clearTimeout(NARROW); NARROW=setTimeout(()=>setBattleSel([gi]),400); return; }
-  setBattleSel(mates,false); }
+  // the selector picks exactly the regiment tapped
+  const i=W?pickUnit(W,2.4,battleTeams()):-1; if(BSELMODE) PANEL_OPEN=true; VIEW.hlPulse=true; setBattleSel(i>=0?[GR[i]]:[],add); }
 function tap(p){
   if(isDoubleTap(p)&&haltOrCharge(p)) return;
   const W=worldAt(p[0],p[1]); if(!W) return;

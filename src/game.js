@@ -563,7 +563,7 @@ function setSel(list,add){
 // a tap selects the whole block a regiment belongs to (its line, square, battery or wing); a second tap on a
 // selected block picks out that one regiment
 const blockMates=g=>g.bk?D.groups.filter(x=>x.bk===g.bk&&x.team===g.team):[g];
-function selectGroup(gi,add,single){ const g=gi>=0?D.groups[gi]:null; if(!g){ setSel([],add); return; }
+function selectGroup(gi,add,single){ VIEW.hlPulse=false; const g=gi>=0?D.groups[gi]:null; if(!g){ setSel([],add); return; }
   const list=single?[g]:blockMates(g);
   if(add&&list.length>1&&list.every(x=>D.selObj.has(x))){ list.forEach(x=>D.selObj.delete(x)); setSel([],true); return; }
   if(add&&list.length>1){ setSel(list.filter(x=>!D.selObj.has(x)),true); return; }
@@ -587,12 +587,10 @@ function boxSelect(a,b,add){
   const inside=(x,y,z)=>{ const q=projW(x,y,z); return q&&q[0]>=x0&&q[0]<=x1&&q[1]>=y0&&q[1]<=y1; };
   if(GAME.phase==='deploy'){
     const hit=D.groups.filter(g=>{ if(g.team!==D.team||!GAME.editTeams.includes(g.team)) return false; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(inside(wx,heightAt(wx,wz)+1,wz)) return true; } return false; });
-    const all=new Set(); for(const g of hit) for(const m of blockMates(g)) all.add(m);
-    if(!add) D.selObj.clear(); setSel([...all].filter(g=>!D.selObj.has(g)),true);
+    VIEW.hlPulse=true; if(!add) D.selObj.clear(); setSel(hit.filter(g=>!D.selObj.has(g)),true);
   } else {
     const t=battleTeams(), hit=new Set(); for(let i=0;i<N;i++){ if(SS[i]!==1||!t.includes(TM[i])||hit.has(GR[i])) continue; if(inside(PX[i],PY[i]+1,PZ[i])) hit.add(GR[i]); }
-    const all=new Set(); for(const gi of hit) for(const k of battleMates(gi)) all.add(k);
-    if(!add) BSEL.clear(); setBattleSel([...all].filter(gi=>!BSEL.has(gi)),true);
+    VIEW.hlPulse=true; if(!add) BSEL.clear(); setBattleSel([...hit].filter(gi=>!BSEL.has(gi)),true);
   }
 }
 function groupBounds(g,dx,dz){ let ok=true; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(!inZone(wx+dx,wz+dz,g.team)){ ok=false; break; } } return ok; }
@@ -883,7 +881,7 @@ function longPress(p){
   const i=pickUnit(W,2.4,null); if(i<0) return false;
   inspectUnit(i);
   // (the soldier card carries the regiment's orders, so the separate orders panel stays shut)
-  if(GAME.phase==='battle'&&battleTeams().includes(TM[i])&&!BSEL.has(GR[i])) setBattleSel(battleMates(GR[i]));
+  if(GAME.phase==='battle'&&battleTeams().includes(TM[i])&&!BSEL.has(GR[i])){ VIEW.hlPulse=false; setBattleSel(battleMates(GR[i])); }
   return true; }
 stage.addEventListener('pointerdown',e=>{
   try{ stage.setPointerCapture(e.pointerId); }catch(_){}
@@ -958,7 +956,7 @@ function goToast(types){ const o=new Set(types.filter(t=>UNITS[t].cls!=='sup').m
 function haltOrCharge(p){
   const W=worldAt(p[0],p[1]); if(!W) return false; const sup=t=>UNITS[t].cls==='sup';
   if(GAME.phase==='battle'){ const i=pickUnit(W,2.4,battleTeams()); if(i<0) return false; const gi=GR[i];
-    let list=BSEL.has(gi)?[...BSEL]:battleMates(gi); if(!BSEL.has(gi)) setBattleSel(list);
+    let list=BSEL.has(gi)?[...BSEL]:battleMates(gi); if(!BSEL.has(gi)){ VIEW.hlPulse=false; setBattleSel(list); }
     if(list.some(k=>G[k]&&!sup(G[k].type))) list=list.filter(k=>G[k]&&!sup(G[k].type));
     const go=k=>ORDER_IDS.indexOf(goOrder(G[k].type)), charge=!list.every(k=>G[k].order===go(k)); for(const k of list) setBattleOrder(k,charge?go(k):O_HOLD);
     toast(charge?goToast(list.map(k=>G[k].type)):'Halt',1100); renderGroupPanel(); return true; }
@@ -970,11 +968,8 @@ function haltOrCharge(p){
   return false; }
 function boxTap(p,add){ if(isDoubleTap(p)&&haltOrCharge(p)) return; const W=worldAt(p[0],p[1]);
   if(GAME.phase==='deploy'){ if(!add) selectGroup(-1); return; }
-  const i=W?pickUnit(W,2.4,battleTeams()):-1; if(BSELMODE) PANEL_OPEN=true; if(i<0){ setBattleSel([],add); return; }
-  const gi=GR[i], mates=battleMates(gi), whole=mates.length>1&&mates.every(k=>BSEL.has(k));
-  if(add){ if(whole) mates.forEach(k=>BSEL.delete(k)); else mates.forEach(k=>BSEL.add(k)); refreshHighlight(); renderGroupPanel(); return; }
-  if(whole&&BSEL.size===mates.length){ clearTimeout(NARROW); NARROW=setTimeout(()=>setBattleSel([gi]),400); return; }
-  setBattleSel(mates,false); }
+  // the selector picks exactly the regiment tapped
+  const i=W?pickUnit(W,2.4,battleTeams()):-1; if(BSELMODE) PANEL_OPEN=true; VIEW.hlPulse=true; setBattleSel(i>=0?[GR[i]]:[],add); }
 function tap(p){
   if(isDoubleTap(p)&&haltOrCharge(p)) return;
   const W=worldAt(p[0],p[1]); if(!W) return;

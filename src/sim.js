@@ -193,6 +193,7 @@ function resetBattle(){
 function setAbilities(team,ab){ B.shieldBlock[team]=ab.shieldwall?.7:.5; B.adjBlock[team]=ab.shieldwall?.45:.3; B.shieldArm[team]=ab.shieldwall?5:3; }
 
 // remove old corpses and escaped units to make room (endless / survival)
+const HUNT_R=45;   // how close the enemy must be before advancing soldiers break ranks
 function wallBetween(x0,z0,x1,z1){ const d=Math.hypot(x1-x0,z1-z0), n=Math.ceil(d/1.2); for(let k=1;k<n;k++){ const t=k/n; if(kindAt(x0+(x1-x0)*t,z0+(z1-z0)*t)===T_WALL) return true; } return false; }
 function compact(){
   const map=new Int32Array(N).fill(-1); let w=0;
@@ -468,6 +469,12 @@ function simTick(){
           if(k2===T_GRASS||k2===T_SAND||k2===T_ROAD){ const c2=cellIdx(sx,sz); TER.k[c2]=T_STAKES; TER.own[c2]=tm; stakesChanged=true; } }
         AT[i]=1; dustPuff(fx,heightAt(fx,fz),fz,1);
       }
+      // advancing or charging regiments close to the enemy break ranks: each soldier makes for the nearest enemy
+      // (missile troops and guns until one is in range; missile troops on a wall stay on it)
+      if(follow && !B.hunt && (g.order===O_ADV||g.order===O_CHARGE) && g.ned<HUNT_R && !st.heal && !st.aura && !st.stakes && !(st.isR&&g.behindWall)){
+        const f=flowAt(tm,x,z); follow=false;
+        if(f[0]||f[1]){ dvx=f[0]*spd; dvz=f[1]*spd; } else { const hx=g.nex-x, hz=g.nez-z, hl=Math.hypot(hx,hz)||1; dvx=hx/hl*spd; dvz=hz/hl*spd; }
+        faceT=Math.atan2(dvz,dvx); }
       if(follow && B.hunt){
         follow=false; const f=flowAt(tm,x,z);
         if(f[0]||f[1]){ dvx=f[0]*spd; dvz=f[1]*spd; } else if(g.ned<1e8){ const hx=g.nex-x, hz=g.nez-z, hl=Math.hypot(hx,hz)||1; dvx=hx/hl*spd; dvz=hz/hl*spd; }
