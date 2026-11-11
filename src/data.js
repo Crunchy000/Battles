@@ -410,8 +410,9 @@ function layoutSurvival(counts,T){
   for(const t of cav){ const n=counts[t], sp=UNITS[t].sp, cols=Math.min(12,Math.ceil(Math.sqrt(n*2))), r=Math.ceil(n/cols); mk(t, wx-34-r*sp/2, cz, fmRect(cols,r,sp,n)); cz+=cols*sp+6; }
   const sie=ids('sie'); let sz=-60;
   for(const t of sie){ const n=counts[t], cols=Math.min(14,n), r=Math.ceil(n/cols); mk(t, wx-58, sz+cols*2.5, fmRect(cols,r,5,n)); sz+=cols*5+5; }
-  for(const g of groups){ const keep=[]; for(let k=0;k<g.slots.length;k+=3){ const [x,z]=localToWorld(g,g.slots[k],g.slots[k+1]); if(passAtT(T,x,z) && x<wx-1.5 && x>X0+2 && z>Z0+2 && z<Z1-2) keep.push(g.slots[k],g.slots[k+1],g.slots[k+2]); } g.slots=keep; }
-  return groups.filter(g=>g.slots.length);
+  // anyone who would stand on the wall, in a tower or outside the field moves to the nearest open ground behind it
+  const zone=[X0+8,wx-2.4]; packBlocks(groups.map(g=>({gs:[g]})),T,zone,1);
+  return placeGroups(groups,T,zone,1);
 }
 /* ---------- formations: each one sets the shape, the front-to-back order and everyone's orders ---------- */
 const ROLE={shield:'wall',heavy:'wall',elite:'shock',bers:'shock',sword:'melee',spear:'pike',archer:'missile',xbow:'missile',musket:'missile'};
@@ -456,7 +457,7 @@ function layoutFormation(team,counts,T,form,order,opt={}){
   // a big army forms several squares rather than one huge one
   if(F.shape==='ring'&&!opt.single){ let nf=0; counts.forEach((n,i)=>{ if(UNITS[i].cls!=='cav') nf+=n; }); const nsq=clamp(Math.round(nf/SQUARE_SIZE),1,12); if(nsq>1) return layoutSquares(team,counts,T,F,order,opt,nsq); }
   const dir=team===0?1:-1, face=team===0?0:Math.PI;
-  const front=(team===0?-34:34)-dir*(opt.back||0);
+  const front=opt.front!==undefined?opt.front:(team===0?-34:34)-dir*(opt.back||0);
   // centre on the widest open run of ground near the front
   const probeX=front-dir*6; let bestA=-80,bestB=80,runA=null,bestLen=0;
   for(let z=Z0+4; z<=Z1-4; z+=2){ const ok=passAtT(T,probeX,z)&&passAtT(T,probeX-dir*20,z); if(ok){ if(runA===null) runA=z; if(z-runA>bestLen){ bestLen=z-runA; bestA=runA; bestB=z; } } else runA=null; }
@@ -558,14 +559,14 @@ function layoutFormation(team,counts,T,form,order,opt={}){
   // orders that come with the formation
   for(const g of groups){ const c=UNITS[g.type].cls, u=clamp((g.cz-zc)/(span/2),-1,1);
     g.order= g.type===eng?'hold' : c==='sup'?'advance' : c==='cav'?(g.rear&&F.reserve?'hold':'flank') : c==='sie'?(F.siege||'advance') : F.orders(ROLE[UNITS[g.type].id]||'melee',g.k|0,u); }
-  return opt.noPlace?groups:placeGroups(groups,T,ZONES[team],dir);
+  return opt.noPlace?groups:placeGroups(groups,T,opt.zone||ZONES[team],dir);
 }
 // Several hollow squares for a big army, one per SQUARE_SIZE foot (up to 12), every one with its share of each kind
 // of soldier. They stand in rows with wide lanes between them, alternate rows shifted half a square so
 // each square covers its neighbours' sides with fire (the chequer used against cavalry); horse waits behind.
 const SQUARE_SIZE=300;   // up to 12 squares; from about 3,600 foot they just get bigger
 function layoutSquares(team,counts,T,F,order,opt,nsq){
-  const dir=team===0?1:-1, front=(team===0?-34:34)-dir*(opt.back||0);
+  const dir=team===0?1:-1, front=opt.front!==undefined?opt.front:(team===0?-34:34)-dir*(opt.back||0);
   const probeX=front-dir*6; let bestA=-80,bestB=80,runA=null,bestLen=0;
   for(let z=Z0+4; z<=Z1-4; z+=2){ const ok=passAtT(T,probeX,z)&&passAtT(T,probeX-dir*20,z); if(ok){ if(runA===null) runA=z; if(z-runA>bestLen){ bestLen=z-runA; bestA=runA; bestB=z; } } else runA=null; }
   const zc=(bestA+bestB)/2, Wmax=Math.max(40,(bestB-bestA)*0.95), gap=10;
@@ -586,8 +587,8 @@ function layoutSquares(team,counts,T,F,order,opt,nsq){
   if(horse.some(n=>n>0)){ const hg=layoutFormation(team,horse,T,'ranks',null,Object.assign({},opt,{noPlace:1,zc,span,depth0:back,cav:opt.cav||F.cav}));
     if(F.reserve) for(const g of hg) if(g.rear) g.order='hold'; for(const g of hg) g.bk+=99000; all=all.concat(hg); }
   // each square as a whole to the nearest open ground that fits it, before anything is split up
-  packBlocks([...sq,{gs:all.filter(g=>g.bk>=99000)}].filter(q=>q.gs.length),T,ZONES[team],dir);
-  return placeGroups(all,T,ZONES[team],dir);
+  packBlocks([...sq,{gs:all.filter(g=>g.bk>=99000)}].filter(q=>q.gs.length),T,opt.zone||ZONES[team],dir);
+  return placeGroups(all,T,opt.zone||ZONES[team],dir);
 }
 // Move each block, in turn, to the nearest spot to where it was planned that is open ground inside the
 // zone and clear of the blocks already placed (with a small gap), stepping back before stepping forward.

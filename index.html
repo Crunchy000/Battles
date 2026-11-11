@@ -769,8 +769,9 @@ function layoutSurvival(counts,T){
   for(const t of cav){ const n=counts[t], sp=UNITS[t].sp, cols=Math.min(12,Math.ceil(Math.sqrt(n*2))), r=Math.ceil(n/cols); mk(t, wx-34-r*sp/2, cz, fmRect(cols,r,sp,n)); cz+=cols*sp+6; }
   const sie=ids('sie'); let sz=-60;
   for(const t of sie){ const n=counts[t], cols=Math.min(14,n), r=Math.ceil(n/cols); mk(t, wx-58, sz+cols*2.5, fmRect(cols,r,5,n)); sz+=cols*5+5; }
-  for(const g of groups){ const keep=[]; for(let k=0;k<g.slots.length;k+=3){ const [x,z]=localToWorld(g,g.slots[k],g.slots[k+1]); if(passAtT(T,x,z) && x<wx-1.5 && x>X0+2 && z>Z0+2 && z<Z1-2) keep.push(g.slots[k],g.slots[k+1],g.slots[k+2]); } g.slots=keep; }
-  return groups.filter(g=>g.slots.length);
+  // anyone who would stand on the wall, in a tower or outside the field moves to the nearest open ground behind it
+  const zone=[X0+8,wx-2.4]; packBlocks(groups.map(g=>({gs:[g]})),T,zone,1);
+  return placeGroups(groups,T,zone,1);
 }
 /* ---------- formations: each one sets the shape, the front-to-back order and everyone's orders ---------- */
 const ROLE={shield:'wall',heavy:'wall',elite:'shock',bers:'shock',sword:'melee',spear:'pike',archer:'missile',xbow:'missile',musket:'missile'};
@@ -815,7 +816,7 @@ function layoutFormation(team,counts,T,form,order,opt={}){
   // a big army forms several squares rather than one huge one
   if(F.shape==='ring'&&!opt.single){ let nf=0; counts.forEach((n,i)=>{ if(UNITS[i].cls!=='cav') nf+=n; }); const nsq=clamp(Math.round(nf/SQUARE_SIZE),1,12); if(nsq>1) return layoutSquares(team,counts,T,F,order,opt,nsq); }
   const dir=team===0?1:-1, face=team===0?0:Math.PI;
-  const front=(team===0?-34:34)-dir*(opt.back||0);
+  const front=opt.front!==undefined?opt.front:(team===0?-34:34)-dir*(opt.back||0);
   // centre on the widest open run of ground near the front
   const probeX=front-dir*6; let bestA=-80,bestB=80,runA=null,bestLen=0;
   for(let z=Z0+4; z<=Z1-4; z+=2){ const ok=passAtT(T,probeX,z)&&passAtT(T,probeX-dir*20,z); if(ok){ if(runA===null) runA=z; if(z-runA>bestLen){ bestLen=z-runA; bestA=runA; bestB=z; } } else runA=null; }
@@ -917,14 +918,14 @@ function layoutFormation(team,counts,T,form,order,opt={}){
   // orders that come with the formation
   for(const g of groups){ const c=UNITS[g.type].cls, u=clamp((g.cz-zc)/(span/2),-1,1);
     g.order= g.type===eng?'hold' : c==='sup'?'advance' : c==='cav'?(g.rear&&F.reserve?'hold':'flank') : c==='sie'?(F.siege||'advance') : F.orders(ROLE[UNITS[g.type].id]||'melee',g.k|0,u); }
-  return opt.noPlace?groups:placeGroups(groups,T,ZONES[team],dir);
+  return opt.noPlace?groups:placeGroups(groups,T,opt.zone||ZONES[team],dir);
 }
 // Several hollow squares for a big army, one per SQUARE_SIZE foot (up to 12), every one with its share of each kind
 // of soldier. They stand in rows with wide lanes between them, alternate rows shifted half a square so
 // each square covers its neighbours' sides with fire (the chequer used against cavalry); horse waits behind.
 const SQUARE_SIZE=300;   // up to 12 squares; from about 3,600 foot they just get bigger
 function layoutSquares(team,counts,T,F,order,opt,nsq){
-  const dir=team===0?1:-1, front=(team===0?-34:34)-dir*(opt.back||0);
+  const dir=team===0?1:-1, front=opt.front!==undefined?opt.front:(team===0?-34:34)-dir*(opt.back||0);
   const probeX=front-dir*6; let bestA=-80,bestB=80,runA=null,bestLen=0;
   for(let z=Z0+4; z<=Z1-4; z+=2){ const ok=passAtT(T,probeX,z)&&passAtT(T,probeX-dir*20,z); if(ok){ if(runA===null) runA=z; if(z-runA>bestLen){ bestLen=z-runA; bestA=runA; bestB=z; } } else runA=null; }
   const zc=(bestA+bestB)/2, Wmax=Math.max(40,(bestB-bestA)*0.95), gap=10;
@@ -945,8 +946,8 @@ function layoutSquares(team,counts,T,F,order,opt,nsq){
   if(horse.some(n=>n>0)){ const hg=layoutFormation(team,horse,T,'ranks',null,Object.assign({},opt,{noPlace:1,zc,span,depth0:back,cav:opt.cav||F.cav}));
     if(F.reserve) for(const g of hg) if(g.rear) g.order='hold'; for(const g of hg) g.bk+=99000; all=all.concat(hg); }
   // each square as a whole to the nearest open ground that fits it, before anything is split up
-  packBlocks([...sq,{gs:all.filter(g=>g.bk>=99000)}].filter(q=>q.gs.length),T,ZONES[team],dir);
-  return placeGroups(all,T,ZONES[team],dir);
+  packBlocks([...sq,{gs:all.filter(g=>g.bk>=99000)}].filter(q=>q.gs.length),T,opt.zone||ZONES[team],dir);
+  return placeGroups(all,T,opt.zone||ZONES[team],dir);
 }
 // Move each block, in turn, to the nearest spot to where it was planned that is open ground inside the
 // zone and clear of the blocks already placed (with a small gap), stepping back before stepping forward.
@@ -1216,7 +1217,7 @@ function initUnit(i,team,type,x,z,a,gi,sx,sz,sa){
 function makeBattleGroup(dg){
   let rad=2; for(let k=0;k<dg.slots.length;k+=3) rad=Math.max(rad,Math.hypot(dg.slots[k],dg.slots[k+1]));
   const o=Math.max(0,ORDER_IDS.indexOf(dg.order));
-  return {bk:dg.bk||0,team:dg.team,type:dg.type,order:o,ax:dg.cx,az:dg.cz,a:dg.a,ca:Math.cos(dg.a),sa:Math.sin(dg.a),rad,n0:dg.slots.length/3,
+  return {home:{cx:dg.cx,cz:dg.cz,a:dg.a,order:o,slots:dg.slots.slice()},bk:dg.bk||0,team:dg.team,type:dg.type,order:o,ax:dg.cx,az:dg.cz,a:dg.a,ca:Math.cos(dg.a),sa:Math.sin(dg.a),rad,n0:dg.slots.length/3,
     cnt:dg.slots.length/3,alive:dg.slots.length/3,sx:dg.cx*dg.slots.length/3,sz:dg.cz*dg.slots.length/3,slx:0,slz:0,cx:dg.cx,cz:dg.cz,err:0,fcnt:0,eng:0,ned:1e9,nex:0,nez:0,tg:null,phase:0,side:1,tmr:0,spdNow:0,mdx:Math.cos(dg.a),mdz:Math.sin(dg.a),retreat:false};
 }
 // append deploy-format groups to a running (or fresh) battle
@@ -2682,7 +2683,7 @@ function enterDeploy(cfg){
   STT=[playerStats(),enemyStats(GAME.enemyUlv)];
   D.groups=[]; D.nextId=1; D.nextBk=1; D.undo=[]; D.sel=-1; D.selObj.clear(); BSEL.clear(); D.team=GAME.editTeams[0]; D.terrain=false; D.stroke=null;
   D.fo=[{form:'ranks',order:null,cav:'wings'},{form:'ranks',order:null,cav:'wings'}];
-  if(GAME.limited){ const id=progForm(); D.fo[0]={form:id,order:null,cav:FORM_BY[id].cav}; }
+  if(GAME.limited){ const id=cfg.mode==='survival'?survForm():progForm(); D.fo[0]={form:id,order:null,cav:FORM_BY[id]?FORM_BY[id].cav:'rear'}; }
   const gs=cfg.groups || (cfg.makeGroups?cfg.makeGroups(TER):[]);
   addDeployGroups(gs);
   const av=availableTypes(); if(!av.includes(D.type)) D.type=av[0]||0;
@@ -2720,12 +2721,17 @@ function openCampaign(L){
 function openEndless(mapId){
   enterDeploy({mode:'endless',mapId,seed:(Math.random()*1e6)|0,limited:true,editTeams:[0],zones:[ZONES[0],null],ulv:0,title:'Endless waves',makeGroups:T=>playerLayout(T,PROG.layout)});
 }
-function survivalLayout(T){
-  let gs=trimToRoster(validateGroups(deserializeGroups(PROG.layoutSurv,0),T));
-  const n=gs.reduce((a,g)=>a+g.slots.length/3,0);
-  if(!PROG.layoutSurv || n<Math.min(rosterTotal(),capOf())*0.5) gs=validateGroups(layoutSurvival(autoCounts(),T),T);
+// Survival: hold the wall (gates plugged, missile troops along the wall) or any formation behind it
+const survForm=()=>PROG.formSurv&&(PROG.formSurv==='wall'||FORM_BY[PROG.formSurv])?PROG.formSurv:'wall';
+function survZone(){ return [X0+8,-FORT_WX-2.4]; }
+function survivalGroups(T,form,order,cav){
+  if(form==='wall') return layoutSurvival(autoCounts(),T);
+  // a defending army waits behind its wall: everyone starts on Hold (double tap a regiment to send it out)
+  const gs=layoutFormation(0,autoCounts(form),T,form,order,{cav:cav||FORM_BY[form].cav,front:survZone()[1]-2,zone:survZone()});
+  for(const x of gs) if(UNITS[x.type].cls!=='sup') x.order='hold';
   return gs;
 }
+function survivalLayout(T){ return validateGroups(survivalGroups(T,survForm()),T); }
 function openSurvival(){
   const z=[X0+8,-FORT_WX-2.4];
   enterDeploy({mode:'survival',mapId:'fortress',seed:777,mapOpt:{fortSide:0},limited:true,editTeams:[0],zones:[z,null],ulv:0,title:'Survival · hold the wall',
@@ -2783,6 +2789,33 @@ function spawnEndlessWave(){
   B.phaseT=simTime; B.lastKill=simTime;
   banner('Wave '+w,'var(--red)',1500); if(w>1) audWave();
 }
+// Between endless waves the army re-forms the shape it was deployed in, centred where it now stands (or as
+// close to that as open ground allows), and every regiment gets its first orders back. Survivors take the front places; reinforcements of the same type march up from behind into the rest.
+// Returns the reinforcements that found no place, and how far the army was shifted.
+function reformArmy(reinf){
+  const left=reinf.slice(), mem=G.map(()=>[]);
+  for(let i=0;i<N;i++) if(TM[i]===0&&SS[i]===1&&G[GR[i]]&&G[GR[i]].home) mem[GR[i]].push(i);
+  // how far the army has moved since deployment
+  let sx=0,sz=0,sn=0; G.forEach((g,gi)=>{ const n=mem[gi].length; if(g.team===0&&g.home&&n){ let px=0,pz=0; for(const i of mem[gi]){ px+=PX[i]; pz+=PZ[i]; } sx+=(px/n-g.home.cx)*n; sz+=(pz/n-g.home.cz)*n; sn+=n; } });
+  let ox=0, oz=0;
+  if(sn){ const fx=sx/sn, fz=sz/sn;
+    for(const f of [1,0.75,0.5,0.25,0]){ let ok=0, all=0;
+      G.forEach((g,gi)=>{ if(g.team!==0||!g.home||!mem[gi].length) return; const h=g.home, ca=Math.cos(h.a), sa=Math.sin(h.a);
+        for(let k=0;k<h.slots.length;k+=12){ all++; if(passAt(h.cx+fx*f+sa*h.slots[k]+ca*h.slots[k+1],h.cz+fz*f-ca*h.slots[k]+sa*h.slots[k+1])) ok++; } });
+      if(!all||ok>=all*0.97){ ox=fx*f; oz=fz*f; break; } } }
+  G.forEach((g,gi)=>{ if(g.team!==0||!g.home) return; const h=g.home, sl=h.slots, cap=sl.length/3, ca=Math.cos(h.a), sa=Math.sin(h.a), hx=h.cx+ox, hz=h.cz+oz;
+    let k=0;
+    // front places first (slots are laid out front to back), so a weakened regiment keeps a full front rank
+    const ord=[...Array(cap).keys()].sort((a,b)=>sl[b*3+1]-sl[a*3+1]);
+    for(const i of mem[gi]){ if(k>=cap) break; const s=ord[k++]; SX[i]=sl[s*3]; SZ[i]=sl[s*3+1]; SA[i]=sl[s*3+2]; TG[i]=-1; }
+    while(k<cap&&left[g.type]>0&&N<MAXU){ const s=ord[k++], lx=sl[s*3], lz=sl[s*3+1];
+      let wx=hx+sa*lx+ca*lz, wz=hz-ca*lx+sa*lz; const bx=wx-25*Math.cos(h.a), bz=wz-25*Math.sin(h.a); if(passAt(bx,bz)){ wx=bx; wz=bz; }
+      initUnit(N,0,g.type,wx,wz,h.a+sl[s*3+2],gi,lx,lz,sl[s*3+2]); B.start[0]++; B.startT[0][g.type]++; N++; left[g.type]--; }
+    if(!mem[gi].length&&k===0) return;
+    g.ax=hx; g.az=hz; g.a=h.a; g.ca=ca; g.sa=sa; g.order=h.order; g.tg=null; g.phase=0; g.tmr=0; g.retreat=false; g.mdx=ca; g.mdz=sa; });
+  assignFlankSides(); assignEscorts();
+  return {left,ox,oz};
+}
 function spawnSurvivalBatch(){
   // spawn rate scales with the size of the defending army and climbs steadily over time
   const t=GAME.survT, s0=Math.max(150,B.start[0]), count=Math.max(12,Math.round(s0*(0.0035+t*0.00004)*8)), L=Math.min(20,Math.floor(1+t/30)), pool=poolAt(L);
@@ -2800,12 +2833,15 @@ function afterTick(){
   if(GAME.mode==='endless'){
     checkBreak(0,B.start[0]); checkBreak(1,GAME.waveN||B.start[1]);
     if(B.active[0]===0){ endBattle(1); return; }
-    if(B.active[1]===0 && GAME.waveTimer<0){ GAME.gold+=GAME.wave*40; GAME.waveTimer=5; GAME.wave++;
+    if(B.active[1]===0 && GAME.waveTimer<0){ GAME.gold+=GAME.wave*40; GAME.waveTimer=10; GAME.wave++;
       for(let i=0;i<N;i++) if(TM[i]===0&&(SS[i]===1||SS[i]===2)){ const st=STT[0][TY[i]]; HP[i]=st.hp; MO[i]=st.morale; SS[i]=1; TG[i]=-1; RC[i]=0; }
       const counts=new Array(NT).fill(0); let nr=0;
       for(let t=0;t<NT;t++){ counts[t]=Math.floor((B.deadT[0][t]-(GAME.deadAt[t]||0))*0.35); nr+=counts[t]; }
       GAME.deadAt=Array.from(B.deadT[0]);
-      if(nr>0){ const gs=validateGroupsAny(layoutArmy(0,counts,TER,{back:60})); addGroupsToSim(gs); }
+      // the army marches back to where it was deployed and closes ranks; reinforcements fill the gaps
+      const {left,ox,oz}=reformArmy(counts);
+      // reinforcements with no regiment of their own to join stand behind the army and hold there
+      if(left.some(n=>n>0)){ const gs=layoutArmy(0,left,TER,{back:20}); for(const x of gs){ x.cx+=ox; x.cz+=oz; x.order='hold'; } addGroupsToSim(validateGroupsAny(gs)); }
       toast(`Wave ${GAME.wave-1} broken. Survivors healed`+(nr>0?` and ${fmt(nr)} reinforcements arrive.`:'.'),3000); }
     if(GAME.waveTimer>0){ GAME.waveTimer-=DT; if(GAME.waveTimer<=0){ GAME.waveTimer=-1; spawnEndlessWave(); } }
   } else if(GAME.mode==='survival'){
@@ -3098,14 +3134,14 @@ function bandTypes(t){ const c=teamCounts(t); const present=UNITS.map((u,k)=>k).
 function relayout(t){
   D.selObj.clear(); D.sel=-1;
   let gs;
-  if(GAME.limited&&GAME.mode==='survival'&&t===0) gs=layoutSurvival(autoCounts(),TER);
+  if(GAME.limited&&GAME.mode==='survival'&&t===0){ const f=D.fo[0]; gs=survivalGroups(TER,f.form,f.form==='wall'?null:bandTypes(0),f.cav); }
   else { const f=D.fo[t]; gs=layoutFormation(t,teamCounts(t),TER,f.form,bandTypes(t),Object.assign({cav:f.cav},formOpt(t))); }
   gs=validateGroups(gs,TER); D.groups=D.groups.filter(g=>g.team!==t); addDeployGroups(gs);
-  if(GAME.limited&&t===0){ const f=D.fo[0]; PROG.formId=f.form; PROG.order=null; saveProg(); }
+  if(GAME.limited&&t===0){ const f=D.fo[0]; if(GAME.mode==='survival') PROG.formSurv=f.form; else PROG.formId=f.form; PROG.order=null; saveProg(); }
   syncDeploy(); buildDeployDock();
 }
 // choosing a formation brings its own unit order, horse position and orders
-function setFormation(id){ const t=editTeam(), F=FORM_BY[id]; pushUndo(); Object.assign(D.fo[t],{form:id,order:null,cav:F.cav}); relayout(t); toast(`${F.name}: ${F.plan}`,1800); }
+function setFormation(id){ const t=editTeam(), F=FORM_BY[id]; pushUndo(); Object.assign(D.fo[t],{form:id,order:null,cav:F?F.cav:'rear'}); relayout(t); toast(F?`${F.name}: ${F.plan}`:'Hold the wall: gates plugged, missile troops along the wall',1800); }
 function setComp(t,ty,v){ pushUndo(); const c=D.comp[t]||(D.comp[t]=new Array(NT).fill(0)); const room=MAXU-2000-D.comp[t^1].reduce((a,b)=>a+b,0)-c.reduce((a,b,k)=>a+(k===ty?0:b),0); c[ty]=clamp(Math.round(v)||0,0,Math.max(0,Math.min(room,8000-c.reduce((a,b,k)=>a+(k===ty?0:b),0)))); relayout(t); }
 function fillComp(t,style,total){ pushUndo(); D.comp[t]=armyCounts(clamp(total|0,0,8000),UNITS.map(u=>u.id),style,mulberry32((Math.random()*1e9)|0)); relayout(t); }
 function clearTeam(){ if(!GAME.limited){ pushUndo(); D.comp[D.team]=new Array(NT).fill(0); relayout(D.team); toast('Army cleared. Undo brings it back.'); return; } pushUndo(); D.groups=D.groups.filter(g=>g.team!==D.team||!GAME.editTeams.includes(g.team)); D.sel=-1; syncDeploy(); refreshDeployUi(); toast('Cleared. Undo brings them back.'); }
@@ -3151,7 +3187,7 @@ function buildDeployDock(){
   } else {
     // front-to-back ordering strip: one tile per infantry or missile type
     const t=editTeam(), o=bandTypes(t), c=teamCounts(t), red=t===1?' red':'';
-    if(surv){ chips.innerHTML='<div class="hint" style="align-self:center">Survival deploys to hold the wall: infantry block the three gates and missile troops line the wall. Select regiments to move them or change their orders.</div>'; }
+    if(surv&&D.fo[0].form==='wall'){ chips.innerHTML='<div class="fplan wide"><b>Hold the wall</b><span>Infantry plug the three gates and missile troops line the wall, with horse and guns in reserve. Or pick any formation to form up behind the wall.</span></div>'; }
     else if(!o.length){ chips.innerHTML=`<div class="hint" style="align-self:center">${GAME.limited?'Recruit infantry or missile troops in the Council to arrange your ranks.':'Add soldiers above to build this army.'}</div>`; }
     else { const F=FORM_BY[D.fo[t].form]||FORMATIONS[0];
       chips.insertAdjacentHTML('beforeend',`<div class="fplan wide" title="${esc(F.desc)}"><b>${F.name}</b><span>${esc(F.desc)}</span><span class="fo">Orders: ${F.plan} · Front to back: ${o.map(id=>UNITS[UID[id]].name).join(' → ')}</span>${GAME.limited&&t===0&&rosterTotal()>capOf()?`<span class="fo">Your roster is over the ${fmt(capOf())} limit, so the troops this formation suits best, and your strongest, go first.</span>`:''}</div>`); }
@@ -3177,9 +3213,9 @@ function buildDeployDock(){
     tools.append(sel,sz);
   } else {
     const t=editTeam(), f=D.fo[t];
-    if(surv){ const b=document.createElement('button'); b.className='btn sm'; b.textContent='Reset to the wall'; b.onclick=()=>{ pushUndo(); relayout(0); }; tools.appendChild(b); }
-    else {
-      FORMATIONS.forEach(fm=>{ const on=f.form===fm.id, b=document.createElement('button'); b.className='ftile'+(on?' on':''); b.innerHTML=formIcon(fm.id)+`<span>${fm.name}</span>`; b.title=`${fm.name} (front at the top). ${fm.desc} Orders: ${fm.plan}.`; b.setAttribute('aria-pressed',on); b.onclick=()=>setFormation(fm.id); tools.appendChild(b); });
+    {
+      if(surv){ const on=f.form==='wall', b=document.createElement('button'); b.className='ftile'+(on?' on':''); b.innerHTML=formIcon('assault')+'<span>Hold the wall</span>'; b.title='Hold the wall: infantry plug the three gates and missile troops line the wall.'; b.setAttribute('aria-pressed',on); b.onclick=()=>setFormation('wall'); tools.appendChild(b); }
+      FORMATIONS.forEach(fm=>{ if(surv&&fm.id==='assault') return; const on=f.form===fm.id, b=document.createElement('button'); b.className='ftile'+(on?' on':''); b.innerHTML=formIcon(fm.id)+`<span>${fm.name}</span>`; b.title=`${fm.name} (front at the top). ${fm.desc} Orders: ${fm.plan}.`; b.setAttribute('aria-pressed',on); b.onclick=()=>setFormation(fm.id); tools.appendChild(b); });
 
     }
   }
@@ -3496,7 +3532,7 @@ function showBattles(tab){
     body=`<p class="lede">${campaignDone()?`You have won the war. Replay any battle, or take your army into Endless and Survival.`:`Battle ${Math.min(top,CAMPAIGN_LEN)} of ${CAMPAIGN_LEN}.`} Your army: <b>${fmt(rosterTotal())}</b> soldiers in the roster, up to <b>${fmt(capOf())}</b> on the field at once. Enemies grow about 30% larger each battle. The fallen recover between battles, but soldiers who flee the field desert for good.</p><div class="list" id="campList">${rows.reverse().join('')}</div>
     <div class="resetrow"><span class="hint">Start again from battle 1 with a fresh army. Gold, soldiers, research, upgrades and best scores are wiped${CLOUD.on?' on every device signed in to your account':''}. Saved layouts are kept.</span><button class="btn sm danger" id="bReset">Reset progress</button></div>`;
   } else if(tab==='endless'){
-    body=`<p class="lede">Deploy your roster and hold out against waves that grow 25% larger every round. Between waves your survivors heal fully and a third of the fallen return as reinforcements. Each broken wave pays a bonus. Best: <b>${PROG.best.endless}</b> waves.</p>
+    body=`<p class="lede">Deploy your roster and hold out against waves that grow 25% larger every round. Between waves your survivors heal fully, the army re-forms its formation where it stands, and a third of the fallen return as reinforcements, filling the gaps in their own regiments. Each broken wave pays a bonus. Best: <b>${PROG.best.endless}</b> waves.</p>
     <div class="grid2"><label class="field">Battlefield<select id="eMap">${mapOptions('grassland',['blank'])}</select></label></div><div class="actions"><button class="btn primary" id="eGo">Deploy</button></div>`;
   } else if(tab==='survival'){
     body=`<p class="lede">Defend the western wall. Enemy columns arrive without pause and get stronger every minute. Your walls block missiles and funnel attackers through three gates. Best: <b>${mmss(PROG.best.survival)}</b> held.</p><div class="actions"><button class="btn primary" id="sGo">Deploy behind the wall</button></div>`;
