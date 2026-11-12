@@ -17,7 +17,7 @@ const ALLARR=[PX,PZ,OX,OZ,PY,VX,VZ,FA,HP,MO,CD,AT,FL,DE,BA,BS,CH,SX,SZ,SA,STN,ST
 let STT=[computeStats(lvZero,{}),computeStats(lvZero,{})];
 let G=[];
 
-const B={rules:{morale:true,rain:false}, start:[0,0], dead:[0,0], esc:[0,0], active:[0,0], fleeing:[0,0], startT:[new Int32Array(NT),new Int32Array(NT)], deadT:[new Int32Array(NT),new Int32Array(NT)], escT:[new Int32Array(NT),new Int32Array(NT)], killsT:[new Int32Array(NT),new Int32Array(NT)], broken:[false,false],
+const B={lat:[[0,0],[0,0]],rules:{morale:true,rain:false}, start:[0,0], dead:[0,0], esc:[0,0], active:[0,0], fleeing:[0,0], startT:[new Int32Array(NT),new Int32Array(NT)], deadT:[new Int32Array(NT),new Int32Array(NT)], escT:[new Int32Array(NT),new Int32Array(NT)], killsT:[new Int32Array(NT),new Int32Array(NT)], broken:[false,false],
   combat:[0,0], hunt:false, noRout:false, noHunt:false, phaseT:0, shieldBlock:[.5,.5], adjBlock:[.3,.3], shieldArm:[3,3], armyLoss:[0,0], hasMelee:[1,1], onKill:null, onEscape:null, tcx:[0,0], tcz:[0,0]};
 const TEAMCOL=[[0.24,0.45,0.90],[0.86,0.27,0.22]];
 
@@ -180,9 +180,11 @@ function attachEscort(g){ const h=escortHost(g); g.host=h; g.embed=false; if(!h)
   if(dx*dx+dz*dz<0.25 && Math.abs(Math.atan2(Math.sin(g.a-h.a),Math.cos(g.a-h.a)))<0.05){ g.embed=true; g.hlx=0; g.hlz=0; return; }
   if(Math.hypot(lx,lz)>h.rad+14){ lx=0; lz=-(h.rad+3); } g.hlx=lx; g.hlz=lz; }
 function assignEscorts(){ for(const g of G){ const st=STT[g.team][g.type]; if(g.host===undefined && (st.aura||st.heal) && g.order===O_ADV) attachEscort(g); } }
+// which way a regiment goes round: the side of its own army it stands on (p is the army's left-right axis)
+function flankSide(g){ const t=g.team, ux=B.tcx[t^1]-B.tcx[t], uz=B.tcz[t^1]-B.tcz[t], l=Math.hypot(ux,uz)||1; return ((g.az-B.tcz[t])*(ux/l)-(g.ax-B.tcx[t])*(uz/l))>=0?1:-1; }
 function assignFlankSides(){
   for(let t=0;t<2;t++){ let sx=0,sz=0,n=0; for(const g of G) if(g.team===t&&g.cnt>0){ sx+=g.ax*g.cnt; sz+=g.az*g.cnt; n+=g.cnt; } if(n){B.tcx[t]=sx/n; B.tcz[t]=sz/n;} }
-  for(const g of G){ if(g.order===O_FLANK && g.phase===0){ g.side = (g.az>=B.tcz[g.team]) ? 1 : -1; if(g.team===1) g.side=-g.side; } }
+  for(const g of G){ if(g.order===O_FLANK && g.phase===0) g.side=flankSide(g); }
 }
 function resetBattle(){
   N=0; G=[]; tick=0; simTime=0;
@@ -286,6 +288,10 @@ function updateGroups(){
   if(retarget){
     for(let t=0;t<2;t++){ let sx=0,sz=0,n=0; for(const g of G) if(g.team===t&&g.alive>0){ sx+=g.cx*g.alive; sz+=g.cz*g.alive; n+=g.alive; } if(n){ B.tcx[t]=sx/n; B.tcz[t]=sz/n; } }
     B.hasMelee=[0,0]; for(const g of G) if(g.alive>0 && !UNITS[g.type].isR) B.hasMelee[g.team]=1;
+    // how far each army reaches to either side, across the line between the two armies
+    B.lat=[[0,0],[0,0]];
+    for(let t=0;t<2;t++){ const ux=B.tcx[t^1]-B.tcx[t], uz=B.tcz[t^1]-B.tcz[t], l=Math.hypot(ux,uz)||1, px=-uz/l, pz=ux/l; let a=0,b=0;
+      for(const g of G) if(g.team===t&&g.alive>0){ const q=(g.cx-B.tcx[t])*px+(g.cz-B.tcz[t])*pz; a=Math.min(a,q-g.rad); b=Math.max(b,q+g.rad); } B.lat[t]=[a,b]; }
   }
   for(const g of G){
     g.alive=g.cnt;
@@ -297,7 +303,12 @@ function updateGroups(){
       if(e>=0){ g.nex=PX[e]; g.nez=PZ[e]; g.ned=Math.hypot(g.nex-g.cx,g.nez-g.cz); } else g.ned=1e9;
       g.behindWall=e>=0&&g.ned<120&&wallBetween(g.cx,g.cz,g.nex,g.nez);
       let best=null, bd=1e18;
-      for(const h of G){ if(h.team===g.team||h.alive<=0) continue; let d=(h.cx-g.cx)**2+(h.cz-g.cz)**2; if(st.cls==='cav'){ const hc=UNITS[h.type].cls; if(hc==='rng'||hc==='sie') d*=0.35; } if(d<bd){ bd=d; best=h; } }
+      const fl=g.order===O_FLANK;
+      if(fl && g.phase>0 && g.tg && g.tg.alive>0) best=g.tg;
+      else for(const h of G){ if(h.team===g.team||h.alive<=0) continue; let d=(h.cx-g.cx)**2+(h.cz-g.cz)**2;
+        if(st.cls==='cav'){ const hc=UNITS[h.type].cls; if(fl){ if(hc==='sie') d*=0.02; else if(hc==='rng') d*=0.1; } else if(hc==='rng'||hc==='sie') d*=0.35; }
+        if(d<bd){ bd=d; best=h; } }
+      if(fl && best!==g.tg && g.phase>0 && best && (best.cx-g.cx)**2+(best.cz-g.cz)**2>1600){ g.phase=0; g.tmr=0; }
       g.tg=best;
     }
     if(retarget && g.host && (g.host.alive<=0||g.order!==O_ADV)){ if(g.order===O_ADV) attachEscort(g); else g.host=null; }
@@ -328,15 +339,32 @@ function updateGroups(){
       }
       if(g.order===O_CHARGE && !st.isR) spd=st.speed;
     } else if(g.order===O_FLANK){
-      if(g.phase===0 && tg){
-        let ux=B.tcx[g.team^1]-B.tcx[g.team], uz=B.tcz[g.team^1]-B.tcz[g.team]; const ul=Math.hypot(ux,uz)||1; ux/=ul; uz/=ul;
-        const px=-uz*g.side, pz=ux*g.side;
-        const wx=clamp(tg.cx+px*36+ux*6,X0+8,X1-8), wz=clamp(tg.cz+pz*36+uz*6,Z0+8,Z1-8);
-        const dx=wx-g.ax, dz=wz-g.az, d=Math.hypot(dx,dz);
+      // Flank: ride out wide past the end of the enemy line (phase 0), swing round behind the target (phase 1),
+      // then charge it from behind (phase 2). Flanking horse pick guns first, then missile troops.
+      if(tg){
+        const t=g.team, ul=Math.hypot(B.tcx[t^1]-B.tcx[t],B.tcz[t^1]-B.tcz[t])||1, ux=(B.tcx[t^1]-B.tcx[t])/ul, uz=(B.tcz[t^1]-B.tcz[t])/ul, px=-uz, pz=ux;
+        if(g.phase===0&&g.tmr===0) g.side=flankSide(g);
+        // already in among them, or caught on the way: fight it out here
+        if(g.phase<2 && (g.eng>g.cnt*0.35 || Math.hypot(tg.cx-g.ax,tg.cz-g.az)<14)) g.phase=2;
         g.tmr+=DT;
-        if(d<10||g.tmr>30||g.ned<9||!passAt(wx,wz)) g.phase=1; else { mx=dx; mz=dz; move=true; spd=st.speed*0.85; }
+        const ok=(x,z)=>passAt(x,z), cl=(x,z)=>[clamp(x,X0+8,X1-8),clamp(z,Z0+8,Z1-8)];
+        if(g.phase===0){
+          // level with the target, 30 m beyond the end of the enemy line on our side
+          const E=B.lat[t^1], ex=B.tcx[t^1], ez=B.tcz[t^1], ta=(tg.cx-ex)*ux+(tg.cz-ez)*uz, tl=g.side>0?Math.max(E[1],(tg.cx-ex)*px+(tg.cz-ez)*pz+tg.rad)+30:Math.min(E[0],(tg.cx-ex)*px+(tg.cz-ez)*pz-tg.rad)-30;
+          let [wx,wz]=cl(ex+ux*(ta-12)+px*tl, ez+uz*(ta-12)+pz*tl);
+          for(let k=0;k<6&&!ok(wx,wz);k++){ wx-=px*g.side*8; wz-=pz*g.side*8; }
+          const dx=wx-g.ax, dz=wz-g.az, d=Math.hypot(dx,dz);
+          if(d<12||g.tmr>45) { g.phase=1; g.tmr=0.01; } else { mx=dx; mz=dz; move=true; spd=st.speed*0.95; }
+        }
+        if(g.phase===1){
+          // a point behind the target, then straight in
+          let [wx,wz]=cl(tg.cx+ux*(tg.rad+14)+px*g.side*6, tg.cz+uz*(tg.rad+14)+pz*g.side*6);
+          if(!ok(wx,wz)){ wx=tg.cx+px*g.side*(tg.rad+12); wz=tg.cz+pz*g.side*(tg.rad+12); }
+          const dx=wx-g.ax, dz=wz-g.az, d=Math.hypot(dx,dz);
+          if(d<10||g.tmr>30) g.phase=2; else { mx=dx; mz=dz; move=true; spd=st.speed*0.95; }
+        }
+        if(g.phase===2){ const dx=tg.cx-g.ax, dz=tg.cz-g.az; if(dx*dx+dz*dz>9){ mx=dx; mz=dz; move=true; spd=st.speed; } }
       }
-      if(g.phase===1 && tg){ const dx=tg.cx-g.ax, dz=tg.cz-g.az; if(dx*dx+dz*dz>9){ mx=dx; mz=dz; move=true; spd=st.speed*0.9; } }
     }
     const ml=Math.hypot(mx,mz);
     if(move && ml>0){
@@ -449,7 +477,7 @@ function simTick(){
           if(d<1.6){ follow=false; faceT=Math.atan2(dz,dx); if(CD[i]<=0&&STN[i]<=0){ meleeHit(i,tgt,1); CD[i]=st.cdT; } }
           else if(d<4){ follow=false; dvx=-dx/d*spd; dvz=-dz/d*spd; }
         } else {
-          const eng= g.order===O_HOLD? st.sense+2 : st.sense;
+          const eng= g.order===O_HOLD? st.sense+2 : g.order===O_FLANK&&g.phase<2? st.range+st.r+1.2 : st.sense;
           let ok=d<=eng;
           if(ok && g.order===O_HOLD && !B.hunt){
             // regiments on Hold stay anchored: only fight enemies close to their own formation slot
