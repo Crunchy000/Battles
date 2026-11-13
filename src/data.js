@@ -56,7 +56,7 @@ const UNITS=[
  {id:'cmdr',  name:'Commanders',cls:'sup', hp:320,armor:8, dmg:24,aps:0.8, speed:3.4,range:1.1,morale:100,cost:150,r:.50,sp:2.5,mass:2,  scale:1.2, foot:.7,  aura:12, noFlee:1, role:'Leadership', desc:'Nearby troops deal 25% more damage and recover morale. Routed soldiers can only rally beside a commander.'},
  {id:'medic', name:'Medics',    cls:'sup', hp:70, armor:1, dmg:4, aps:0.5, speed:3.2,range:0.9,morale:50, cost:40, r:.40,sp:1.6,mass:.9, scale:1,   foot:.5,  heal:7, role:'Healing', desc:'Heal the most wounded soldier nearby and keep clear of melee.'},
  {id:'eng',   name:'Engineers', cls:'sup', hp:90, armor:2, dmg:8, aps:0.8, speed:3.0,range:0.9,morale:50, cost:40, r:.42,sp:1.6,mass:1,  scale:1,   foot:.55, stakes:1, role:'Fieldworks', desc:'Plant sharpened stakes ahead of them that maul enemy cavalry.'},
- {id:'elite', name:'Champions', cls:'inf', hp:650,armor:12,dmg:55,aps:1.0, speed:3.6,range:1.5,morale:100,cost:300,r:.55,sp:1.6,mass:3,  scale:1.35,foot:.8,  noFlee:1, cleave:2, role:'Elite', desc:'Rare heroes whose blows cleave through two extra enemies.'},
+ {id:'elite', name:'Champions', cls:'inf', hp:420,armor:8, dmg:38,aps:1.0, speed:3.6,range:1.5,morale:100,cost:150,supply:5,r:.55,sp:1.6,mass:3,  scale:1.35,foot:.8,  noFlee:1, cleave:1, role:'Elite', desc:'Heroes whose blows cleave through a second enemy and who never rout. Each takes 5 places in the army limit.'},
 ];
 const NT=UNITS.length;
 const UID={}; UNITS.forEach((u,i)=>{UID[u.id]=i; u.ucat = (u.cls==='sup')?'inf':u.cls; u.isR = u.proj!=null; u.isSiege = u.cls==='sie';});
@@ -68,9 +68,14 @@ const CLS_NAMES={inf:'Infantry',rng:'Ranged',cav:'Cavalry',sie:'Siege',sup:'Supp
 const BRANCHES=['Infantry','Ranged','Cavalry','Siege','Command','Logistics'];
 // Upgrade lines: researching the next unit in a line re-equips every soldier of the previous tier,
 // and the old type retires from your roster, so a developed army keeps a short list of unit types.
-const LINES=[['sword','heavy','elite'],['archer','xbow','musket'],['lcav','hcav','lancer'],['cata','mortar'],['ballista','cannon']];
+// Swordsmen, heavy infantry and champions are separate classes, bought separately (no free upgrades)
+const LINES=[['archer','xbow','musket'],['lcav','hcav','lancer'],['cata','mortar'],['ballista','cannon']];
 const PREV_TIER={}, NEXT_TIER={};
 LINES.forEach(l=>l.forEach((id,k)=>{ if(k>0) PREV_TIER[id]=l[k-1]; if(k<l.length-1) NEXT_TIER[id]=l[k+1]; }));
+// enemy armies still trade up their infantry as the campaign goes on
+const ENEMY_NEXT=Object.assign({sword:'heavy',heavy:'elite'},NEXT_TIER);
+// how many places in the army limit one soldier takes (champions count as several)
+const supplyOf=t=>UNITS[t].supply||1;
 const TECH=[
  {id:'sword', b:0,name:'Swordsmen',cost:0,req:[],unit:'sword'},
  {id:'spear', b:0,name:'Spearmen',cost:120,req:['sword'],unit:'spear'},
@@ -78,7 +83,7 @@ const TECH=[
  {id:'shieldwall',b:0,name:'Shield Wall',cost:800,req:['shield'],desc:'Shieldbearers block 70% of frontal missiles and give +5 armour to neighbours.'},
  {id:'bers',  b:0,name:'Berserkers',cost:600,req:['spear'],unit:'bers'},
  {id:'heavy', b:0,name:'Heavy Infantry',cost:900,req:['shield'],unit:'heavy'},
- {id:'elite', b:0,name:'Champions',cost:4500,req:['heavy','cmdr'],unit:'elite'},
+ {id:'elite', b:0,name:'Champions',cost:4500,req:['heavy','cmdr'],unit:'elite',desc:'The finest fighters in the army. Each champion takes 5 places in your army limit.'},
  {id:'archer',b:1,name:'Archers',cost:0,req:[],unit:'archer'},
  {id:'firearrows',b:1,name:'Bodkin Arrows',cost:450,req:['archer'],desc:'Archers and crossbowmen deal 30% more damage.'},
  {id:'xbow',  b:1,name:'Crossbowmen',cost:450,req:['archer'],unit:'xbow'},
@@ -693,7 +698,7 @@ function genArmy(team,total,pool,style,seed,T,opt){ const R=mulberry32(seed); re
 
 /* ---------- Campaign ---------- */
 const POOL_AT=[[1,'sword'],[1,'archer'],[2,'spear'],[3,'lcav'],[4,'shield'],[5,'cata'],[6,'cmdr'],[7,'xbow'],[8,'hcav'],[8,'bers'],[9,'medic'],[9,'ballista'],[11,'eng'],[12,'heavy'],[13,'musket'],[14,'lancer'],[14,'cannon'],[16,'mortar'],[18,'elite']];
-function poolAt(L){ const ids=POOL_AT.filter(p=>p[0]<=L).map(p=>p[1]); return ids.filter(id=>!(NEXT_TIER[id]&&ids.includes(NEXT_TIER[id]))); }
+function poolAt(L){ const ids=POOL_AT.filter(p=>p[0]<=L).map(p=>p[1]); return ids.filter(id=>!(ENEMY_NEXT[id]&&ids.includes(ENEMY_NEXT[id]))); }
 const MAP_CYCLE=['grassland','hills','forest','river','pass','desert','fortress'];
 const STYLE_CYCLE=['balanced','horde','ranged','cavalry','balanced','siege','horde'];
 const ROMAN=['','','II','III','IV','V','VI','VII','VIII','IX','X'];

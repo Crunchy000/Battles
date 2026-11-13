@@ -146,7 +146,7 @@ function inZone(x,z,team){ const zn=GAME.zones[team]; if(!zn) return x>X0+2&&x<X
 function validateGroups(gs,T){ for(const g of gs){ const keep=[]; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); if(passAtT(T,wx,wz)&&inZone(wx,wz,g.team)) keep.push(g.slots[k],g.slots[k+1],g.slots[k+2]); } g.slots=keep; } return gs.filter(g=>g.slots.length); }
 function trimToRoster(gs){
   const left={}; UNITS.forEach(u=>left[u.id]=PROG.roster[u.id]||0); let cap=capOf();
-  for(const g of gs){ const id=UNITS[g.type].id; if(!fieldable(id)){ g.slots=[]; continue; } const n=Math.min(g.slots.length/3,left[id],cap); g.slots.length=n*3; left[id]-=n; cap-=n; }
+  for(const g of gs){ const id=UNITS[g.type].id; if(!fieldable(id)){ g.slots=[]; continue; } const s=supplyOf(g.type), n=Math.max(0,Math.min(g.slots.length/3,left[id],Math.floor(cap/s))); g.slots.length=n*3; left[id]-=n; cap-=n*s; }
   return gs.filter(g=>g.slots.length);
 }
 // the soldiers who take the field. Over the army limit, commanders, medics and engineers all come,
@@ -154,21 +154,22 @@ function trimToRoster(gs){
 // (squared, so a shield wall really does fill up with shields and spears first) times how good a soldier it
 // is (by cost: champions, heavy cavalry and cannons before levies). High-priority types come in full;
 // the rest share what room is left in proportion to their numbers and priority.
-function unitQuality(i){ return Math.sqrt(clamp(UNITS[i].cost/12,0.6,4)); }
+function unitQuality(i){ return Math.sqrt(clamp(UNITS[i].cost/supplyOf(i)/12,0.6,4)); }   // per place in the army limit
 function autoCounts(formId){
   const counts=new Array(NT).fill(0), cap=capOf(), have=new Array(NT).fill(0); let tot=0;
-  UNITS.forEach((u,i)=>{ if(fieldable(u.id)){ have[i]=PROG.roster[u.id]||0; tot+=have[i]; } });
+  // the army limit counts places, not heads: a champion takes 5
+  UNITS.forEach((u,i)=>{ if(fieldable(u.id)){ have[i]=PROG.roster[u.id]||0; tot+=have[i]*supplyOf(i); } });
   if(tot<=cap) return have;
   let room=cap; for(const id of ['cmdr','medic','eng']){ const i=UID[id]; counts[i]=Math.min(have[i],room); room-=counts[i]; }
   const want=(FORM_BY[formId||progForm()]||FORMATIONS[0]).want;
   const w=UNITS.map((u,i)=>{ const r=unitRole(i); if(r==='sup') return 0; const f=want[r]===undefined?1:want[r]; return f*f*unitQuality(i); });
   // find the share x so that sum(min(have, x*have*w)) fills the room
-  const fill=x=>{ let s=0; for(let i=0;i<NT;i++) if(w[i]) s+=Math.min(have[i],x*have[i]*w[i]); return s; };
+  const fill=x=>{ let s=0; for(let i=0;i<NT;i++) if(w[i]) s+=Math.min(have[i],x*have[i]*w[i])*supplyOf(i); return s; };
   let lo=0, hi=1; while(fill(hi)<room && hi<1e6) hi*=2; for(let k=0;k<40;k++){ const m=(lo+hi)/2; if(fill(m)<room) lo=m; else hi=m; }
   const exact=UNITS.map((u,i)=>w[i]?Math.min(have[i],lo*have[i]*w[i]):0);
   for(let i=0;i<NT;i++) if(w[i]) counts[i]=Math.floor(exact[i]);
-  let left=cap-counts.reduce((a,b)=>a+b,0); const ord=exact.map((v,i)=>[v-Math.floor(v),i]).filter(p=>w[p[1]]&&counts[p[1]]<have[p[1]]).sort((a,b)=>b[0]-a[0]);
-  for(let j=0;left>0&&j<ord.length;j++,left--) counts[ord[j][1]]++;
+  let left=cap-supplyUsed(counts); const ord=exact.map((v,i)=>[v-Math.floor(v),i]).filter(p=>w[p[1]]&&counts[p[1]]<have[p[1]]).sort((a,b)=>b[0]-a[0]);
+  for(let pass=0;pass<2;pass++) for(const [,i] of ord){ const s=supplyOf(i); while(left>=s&&counts[i]<have[i]&&(pass||counts[i]<Math.ceil(exact[i]))){ counts[i]++; left-=s; } }
   return counts;
 }
 // the formation the player last chose (older saves stored a number)
@@ -481,10 +482,12 @@ function occBox(x,z,hs,set){
   return true;
 }
 function rebuildOcc(skip){ OCC.fill(0); D.groups.forEach((g,gi)=>{ if(gi===skip) return; const hs=(g.sp||UNITS[g.type].sp)*0.45; for(let k=0;k<g.slots.length;k+=3){ const [wx,wz]=localToWorld(g,g.slots[k],g.slots[k+1]); occBox(wx,wz,hs,true); } }); }
-function deployCounts(team){ const by=new Array(NT).fill(0); let total=0; for(const g of D.groups) if(g.team===team){ const n=g.slots.length/3; by[g.type]+=n; total+=n; } return {by,total}; }
+// total is places in the army limit (a champion takes 5); men is the head count
+const supplyUsed=by=>by.reduce((a,n,i)=>a+n*supplyOf(i),0);
+function deployCounts(team){ const by=new Array(NT).fill(0); let total=0, men=0; for(const g of D.groups) if(g.team===team){ const n=g.slots.length/3; by[g.type]+=n; total+=n*supplyOf(g.type); men+=n; } return {by,total,men}; }
 function remainingFor(type,team){
   if(!GAME.limited || team!==0) return Math.max(0,MAXU-2000-D.groups.reduce((a,g)=>a+g.slots.length/3,0));
-  const c=deployCounts(0); return Math.max(0,Math.min((PROG.roster[UNITS[type].id]||0)-c.by[type],capOf()-c.total));
+  const c=deployCounts(0); return Math.max(0,Math.min((PROG.roster[UNITS[type].id]||0)-c.by[type],Math.floor((capOf()-c.total)/supplyOf(type))));
 }
 function allowedAt(x,z,team){ return passAt(x,z) && inZone(x,z,team); }
 const defaultFacing=team=>team===0?0:Math.PI;
@@ -832,7 +835,7 @@ function updateUnitInfo(){
 function updateCapBox(){
   const cb=$('#capBox');
   if(GAME.limited){ const c=deployCounts(0), cap=capOf(), full=c.total>=cap;
-    cb.innerHTML=`Army <b>${fmt(c.total)}</b> / ${fmt(cap)}${full?' <span class="full">· limit reached</span>':''}<span class="bar"><i style="width:${Math.min(100,c.total/cap*100)}%"></i></span>`;
+    cb.innerHTML=`Army <b>${fmt(c.total)}</b> / ${fmt(cap)}${c.men!==c.total?` <span title="Champions take 5 places each">(${fmt(c.men)} soldiers)</span>`:''}${full?' <span class="full">· limit reached</span>':''}<span class="bar"><i style="width:${Math.min(100,c.total/cap*100)}%"></i></span>`;
     document.querySelectorAll('[data-ct]').forEach(e=>{ const ty=+e.dataset.ct, own=PROG.roster[UNITS[ty].id]||0, placed=c.by[ty], left=Math.max(0,own-placed);
       e.textContent= own<=0?'none recruited' : left>0 ? (full?`${fmt(left)} in reserve`:`${fmt(left)} left`) : `all ${fmt(placed)} placed`;
       e.parentElement.classList.toggle('empty',own<=0); }); }
@@ -1180,7 +1183,7 @@ function showCouncil(tab){
       const big=capOf()>=2000?b(1000):'';
       // selling refunds half the price
       const sl=n=>{ const k=Math.min(n,own); return `<button class="btn sm ghost sell" data-sell="${u.id}" data-n="${n}"${k<=0?' disabled':''} title="Dismiss ${fmt(k)} for ${fmt(Math.floor(u.cost*k/2))} gold (half price)">−${fmt(k>0?k:n)} · +${fmt(Math.floor(u.cost*k/2))}</button>`; };
-      return `<div class="rec">${unitIcon(i)}<div style="min-width:0"><div class="t">${u.name}<small>${u.role}</small></div><div class="st">HP ${Math.round(s.hp)} · ARM ${s.armor.toFixed(1).replace('.0','')} · DMG ${Math.round(s.dmg)} · RNG ${u.isR?Math.round(s.range):s.range.toFixed(1)} · SPD ${s.speed.toFixed(1)} · ${u.cost}g each</div></div><div><div class="own"><b>${fmt(own)}</b> owned</div><div class="buy">${u.cls==='sie'?b(1)+b(5):b(10)+b(100)}${big}</div><div class="buy">${u.cls==='sie'||u.cls==='sup'?sl(1)+sl(5):sl(10)+sl(100)}${own>0?`<button class="btn sm ghost sell" data-sell="${u.id}" data-n="${own}" title="Dismiss all ${fmt(own)} for ${fmt(Math.floor(u.cost*own/2))} gold">Sell all</button>`:''}</div></div></div>`; }).join('');
+      return `<div class="rec">${unitIcon(i)}<div style="min-width:0"><div class="t">${u.name}<small>${u.role}</small></div><div class="st">HP ${Math.round(s.hp)} · ARM ${s.armor.toFixed(1).replace('.0','')} · DMG ${Math.round(s.dmg)} · RNG ${u.isR?Math.round(s.range):s.range.toFixed(1)} · SPD ${s.speed.toFixed(1)} · ${u.cost}g each${u.supply?` · takes ${u.supply} places in the army limit`:''}</div></div><div><div class="own"><b>${fmt(own)}</b> owned</div><div class="buy">${u.cls==='sie'?b(1)+b(5):u.supply?b(1)+b(10)+b(100):b(10)+b(100)+big}</div><div class="buy">${u.cls==='sie'||u.cls==='sup'?sl(1)+sl(5):sl(10)+sl(100)}${own>0?`<button class="btn sm ghost sell" data-sell="${u.id}" data-n="${own}" title="Dismiss all ${fmt(own)} for ${fmt(Math.floor(u.cost*own/2))} gold">Sell all</button>`:''}</div></div></div>`; }).join('');
     body=`<p class="lede">Recruits join your roster permanently; dismissing soldiers refunds half their price. You can field up to <b>${fmt(capOf())}</b> at once; research Logistics to raise the cap. Roster: <b>${fmt(rosterTotal())}</b>.</p><div class="list">${rows}</div>`;
   } else if(tab==='tech'){
     const cols=BRANCHES.map((bn,b)=>{ const nodes=TECH.filter(t=>t.b===b).map(t=>{ const own=owned(t.id), avail=!own&&t.req.every(owned);
